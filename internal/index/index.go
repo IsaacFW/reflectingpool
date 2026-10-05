@@ -54,6 +54,8 @@ type Row struct {
 	Ext     string `json:"ext"`
 	Type    string `json:"type"`
 	State   int    `json:"state"`
+	// Covered says the entry is inside a described folder, at any depth.
+	Covered bool `json:"covered"`
 
 	// Rollups, set for directories.
 	Files    int64 `json:"files"`
@@ -72,7 +74,8 @@ func (r *Row) IsDir() bool { return r.Kind == "dir" }
 const (
 	rowCols = `e.id, e.parent, e.name, e.kind, e.flags, e.size, e.disk, e.mtime, e.btime, e.btime_ns, e.atime,
 		e.ino, e.dev, e.nlink, e.share, e.counted, e.ext, e.cat, e.files, e.dirs,
-		e.max_mtime, e.max_btime, e.max_atime, COALESCE(a.state, 0)`
+		e.max_mtime, e.max_btime, e.max_atime, COALESCE(a.state, 0),
+		EXISTS (SELECT 1 FROM covered c WHERE c.dir = e.parent)`
 	rowFrom = ` FROM entries e LEFT JOIN annot a ON a.entry = e.id`
 	// A directory's modified time is the newest file beneath it; an empty
 	// directory falls back to its own.
@@ -97,7 +100,7 @@ func scanRow(s scanner) (Row, error) {
 	var ino, dev int64
 	err := s.Scan(&r.ID, &r.Parent, &r.Name, &kind, &r.Flags, &r.Size, &r.Disk, &r.Mtime, &r.Btime, &r.BtimeNsec, &r.Atime,
 		&ino, &dev, &r.Nlink, &r.Share, &r.Counted, &r.Ext, &cat, &r.Files, &r.Dirs,
-		&r.MaxMtime, &r.MaxBtime, &r.MaxAtime, &r.State)
+		&r.MaxMtime, &r.MaxBtime, &r.MaxAtime, &r.State, &r.Covered)
 	if kind >= 0 && kind < len(kindNames) {
 		r.Kind = kindNames[kind]
 	}

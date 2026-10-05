@@ -4,6 +4,7 @@ import { api, ApiError, session } from './api.js';
 import { Brand, Setup, SignIn } from './auth.js';
 import { count, moment } from './format.js';
 import { html, useEffect, useState } from './lib.js';
+import { Review } from './review.js';
 import { scan, scanDialog, ScanDialog, ScanStrip, watchScan } from './scan.js';
 import { Settings } from './settings.js';
 import { Space } from './space.js';
@@ -12,7 +13,7 @@ import { applyTheme, go, href, route, SCREENS, toast } from './state.js';
 const COMING = {
   overview: 'Capacity, the shares with their size and how much of each is described, and where the last review stopped.',
   find: 'Search and filters across everything: by size, age, type, name and what is recorded.',
-  review: 'One item at a time, with a preview beside it, in the order you choose.',
+
   annotations: 'How much of each share is described, the prefix list, and notes whose item has gone missing.',
   storage: 'Datasets, compression and the space held by snapshots.',
   quarantine: 'Items set aside before deletion, and how to bring them back.',
@@ -64,6 +65,7 @@ function Screen() {
   if (!status) return html`<p class="muted">Loading…</p>`;
   if (!status.index) return html`<${FirstRun} />`;
   if (screen === 'space') return html`<${Space} />`;
+  if (screen === 'review') return html`<${Review} />`;
   const known = SCREENS.find((s) => s.id === screen);
   return html`
     <div class="panel pad stack">

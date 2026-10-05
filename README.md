@@ -2,7 +2,7 @@
 
 A discoverability suite for a NAS: see where the space goes, find what is no longer needed, and record what things are for. Built for Unraid servers that use ZFS pools; [SCOPE.md](SCOPE.md) has the full scope.
 
-**Status: the first screens work.** You can sign in from a browser, start a scan, browse where the space goes folder by folder, look at an item and record what it is for. Find, Review, Overview, Annotations and Storage are still to come (see "Build order" in the scope); their backend is in place and tested.
+**Status: the interface is being built screen by screen.** You can sign in from a browser, start a scan, browse where the space goes, look at an item and record what it is for, and work through a review queue one item at a time. Screens that are not built yet say so.
 
 ## Run it on Unraid
 

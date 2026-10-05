@@ -7,7 +7,7 @@ export const SCREENS = [
   { id: 'overview', label: 'Overview' },
   { id: 'space', label: 'Space', built: true },
   { id: 'find', label: 'Find' },
-  { id: 'review', label: 'Review' },
+  { id: 'review', label: 'Review', built: true },
   { id: 'annotations', label: 'Annotations' },
   { id: 'storage', label: 'Storage' },
   { id: 'settings', label: 'Settings', built: true },
