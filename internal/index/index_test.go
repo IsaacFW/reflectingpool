@@ -269,3 +269,58 @@ func TestClassify(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchByWordsAndBestMatch(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	for name, size := range map[string]int{
+		"art.txt": 1, "the art.pdf": 2, "Art of War (1979).pdf": 3, "party.mkv": 900, "smart.doc": 800,
+		"cart-wheel.txt": 5000, "particle.bin": 10, "war_and_peace.epub": 7,
+	} {
+		write(t, filepath.Join(root, "share", name), size)
+	}
+	ix := build(t, root)
+	find := func(search string, s Sort) []string {
+		t.Helper()
+		rows, err := ix.Find(ctx, Filter{Kind: "file", Name: search}, s, 20, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return names(rows)
+	}
+
+	// By size, the thing called "art" is last of six. By match it is first:
+	// whole words, then nothing here that merely starts with it, then names
+	// that only contain it, the shorter name first among equals.
+	if got := find("art", Sort{Key: "size", Desc: true}); got[len(got)-1] != "art.txt" {
+		t.Errorf("by size = %v", got)
+	}
+	want := []string{"art.txt", "the art.pdf", "Art of War (1979).pdf", "party.mkv", "smart.doc", "particle.bin", "cart-wheel.txt"}
+	if got := find("art", Sort{Key: "match"}); !equal(got, want) {
+		t.Errorf("best match for art = %v\nwant %v", got, want)
+	}
+	// A word of the name that starts with the search comes before a word
+	// that only contains it.
+	if got := find("par", Sort{Key: "match"}); !equal(got, []string{"party.mkv", "particle.bin"}) {
+		t.Errorf("best match for par = %v", got)
+	}
+	// Every word must be there, in any order; separators in the search are
+	// treated as in the names.
+	if got := find("war art", Sort{Key: "match"}); !equal(got, []string{"Art of War (1979).pdf"}) {
+		t.Errorf("two words = %v", got)
+	}
+	if got := find("war peace", Sort{Key: "match"}); !equal(got, []string{"war_and_peace.epub"}) {
+		t.Errorf("words across underscores = %v", got)
+	}
+	if got := find("%", Sort{Key: "match"}); len(got) != 0 {
+		t.Errorf("a percent sign matched %v", got)
+	}
+	// With nothing searched for, "match" has nothing to rank by and falls back to size.
+	if got := find("", Sort{Key: "match"}); got[0] != "cart-wheel.txt" {
+		t.Errorf("no search = %v", got)
+	}
+	totals, err := ix.Count(ctx, Filter{Kind: "file", Name: "war art"})
+	if err != nil || totals.Count != 1 {
+		t.Errorf("count for two words = %+v, %v", totals, err)
+	}
+}

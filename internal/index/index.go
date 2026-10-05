@@ -427,7 +427,7 @@ type Filter struct {
 	MinSize        int64    `json:"min_size"`
 	MaxSize        int64    `json:"max_size"`
 	ModifiedBefore int64    `json:"modified_before"` // unix seconds
-	Name           string   `json:"name"`            // case-insensitive substring
+	Name           string   `json:"name"`            // words that must all be in the name, in any order and any case
 	State          string   `json:"state"`           // "annotated", "unannotated" or "skipped"
 	Prefix         string   `json:"prefix"`
 }
@@ -485,9 +485,10 @@ func (f Filter) where() (string, []any, error) {
 		conds = append(conds, modifiedExpr+" < ?")
 		args = append(args, f.ModifiedBefore)
 	}
-	if f.Name != "" {
+	// Every word of the search must be in the name, in any order.
+	for _, word := range strings.Fields(f.Name) {
 		conds = append(conds, `e.name LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+likeEscape(f.Name)+"%")
+		args = append(args, "%"+likeEscape(word)+"%")
 	}
 	switch f.State {
 	case "":
@@ -514,14 +515,47 @@ func likeEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-// Find lists entries anywhere in the index that match a filter.
+// The name with everything that separates words turned into spaces, and a
+// space at each end, so that " word " finds a whole word wherever it stands.
+const spacedName = `(' ' || replace(replace(replace(replace(replace(replace(replace(lower(e.name), '.', ' '), '_', ' '), '-', ' '), '(', ' '), ')', ' '), '[', ' '), ']', ' ') || ' ')`
+
+var wordBreaks = strings.NewReplacer(".", " ", "_", " ", "-", " ", "(", " ", ")", " ", "[", " ", "]", " ")
+
+// matchOrder ranks names by how well they match the words searched for. A
+// search for "art" finds "party" and "cart" too, and ordered by size those
+// bury the thing called "art". So a word found whole counts for most, then a
+// word that a word of the name starts with, then one found inside a word;
+// among equals the shorter name wins, being the nearer to what was typed.
+func matchOrder(search string) (string, []any) {
+	var score []string
+	var args []any
+	for _, word := range strings.Fields(strings.ToLower(search)) {
+		w := likeEscape(strings.Join(strings.Fields(wordBreaks.Replace(word)), " "))
+		if w == "" {
+			continue
+		}
+		score = append(score, `(CASE WHEN `+spacedName+` LIKE ? ESCAPE '\' THEN 0 WHEN `+spacedName+` LIKE ? ESCAPE '\' THEN 1 ELSE 2 END)`)
+		args = append(args, "% "+w+" %", "% "+w+"%")
+	}
+	if len(score) == 0 {
+		return " ORDER BY e.size DESC, e.id", nil
+	}
+	return " ORDER BY " + strings.Join(score, " + ") + ", length(e.name), e.size DESC, e.id", args
+}
+
+// Find lists entries anywhere in the index that match a filter. The sort key
+// "match" orders them by how well their names match the filter's search.
 func (ix *Index) Find(ctx context.Context, f Filter, s Sort, limit, offset int) ([]Row, error) {
 	where, args, err := f.where()
 	if err != nil {
 		return nil, err
 	}
-	order, err := s.sql()
-	if err != nil {
+	var order string
+	if s.Key == "match" {
+		var more []any
+		order, more = matchOrder(f.Name)
+		args = append(args, more...)
+	} else if order, err = s.sql(); err != nil {
 		return nil, err
 	}
 	return ix.query(ctx, `SELECT `+rowCols+rowFrom+where+order+limitSQL(limit, offset), args...)
