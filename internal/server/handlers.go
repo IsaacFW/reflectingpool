@@ -355,7 +355,34 @@ func (s *Server) getPrefixes(w http.ResponseWriter, r *http.Request, _ auth.Sess
 		s.fail(w, err)
 		return
 	}
+	// How many items carry each one; nothing to count before the first scan.
+	s.app.View(func(ix *index.Index) error {
+		counts, err := ix.PrefixCounts(r.Context())
+		for i := range list {
+			list[i].Count = counts[list[i].Name]
+		}
+		return err
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"prefixes": list})
+}
+
+// deleteShareAnnotation removes a note whose item has gone missing.
+func (s *Server) deleteShareAnnotation(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	id, err := pathID(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		s.fail(w, badRequest("give the note's path in the path parameter"))
+		return
+	}
+	if err := s.app.DeleteMissingAnnotation(context.WithoutCancel(r.Context()), id, path); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) putPrefixes(w http.ResponseWriter, r *http.Request, _ auth.Session) {

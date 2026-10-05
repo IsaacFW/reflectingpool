@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	byID := map[string]authedHandler{
 		"GET /api/shares":                     s.shares,
 		"GET /api/shares/{id}/annotations":    s.shareAnnotations,
+		"DELETE /api/shares/{id}/annotations": s.deleteShareAnnotation,
 		"GET /api/tree":                       s.tree,
 		"GET /api/entries":                    s.entries,
 		"GET /api/entries/{id}":               s.entry,
