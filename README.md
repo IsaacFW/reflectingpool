@@ -6,23 +6,17 @@ A discoverability suite for a NAS: see where the space goes, find what is no lon
 
 ## Run it on Unraid
 
-Every push to this repository tests the code and publishes an image to GitHub's container registry, tagged with the branch name:
+Every push to `main` tests the code and publishes the image to GitHub's container registry:
 
 ```
-ghcr.io/isaacfw/reflectingpool:backend-core
+ghcr.io/isaacfw/reflectingpool:latest
 ```
 
-The image is private while the repository is. On the server, log in once with a GitHub personal access token that has only the `read:packages` permission:
-
-```sh
-docker login ghcr.io -u IsaacFW
-```
-
-Then add a container with these settings. `tank` stands for your pool's name.
+Add a container with these settings. `tank` stands for your pool's name.
 
 | Setting | Value | Why |
 |---|---|---|
-| Repository | `ghcr.io/isaacfw/reflectingpool:backend-core` | `:latest` exists once this branch is merged into `main` |
+| Repository | `ghcr.io/isaacfw/reflectingpool:latest` | Each build also gets a fixed tag, `main-<commit>`, if you prefer to pin one |
 | Path | `/mnt/tank` to `/mnt/tank`, access mode **Read/Write - Slave** | Scanning, annotations. "Slave" lets datasets created later show up without a restart |
 | Path | `/mnt/tank/appdata/reflectingpool` to `/data` | The index, the admin account, the TLS key |
 | Variable | `RP_ROOTS=/mnt/tank` | What to scan. Several pools: comma-separated, one path mapping each |
@@ -39,7 +33,7 @@ docker run -d --name reflectingpool \
   -v /mnt/tank/appdata/reflectingpool:/data \
   --device /dev/zfs \
   -e RP_ROOTS=/mnt/tank \
-  ghcr.io/isaacfw/reflectingpool:backend-core
+  ghcr.io/isaacfw/reflectingpool:latest
 ```
 
 On first start the container log shows two things you need:
