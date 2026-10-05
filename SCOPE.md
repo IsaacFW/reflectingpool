@@ -24,6 +24,8 @@ Agreed scope as of 2026-10-04. A change to this document is a change to scope.
 | ZFS access | Optional and read-only. The tool never creates or destroys snapshots and never changes properties |
 | Frontend | Presentation is decided by a design evaluation before any UI code is written |
 | Licence | MIT |
+| Units | Decimal (GB, TB) by default; a setting switches to binary (GiB, TiB) |
+| Interface design | `design/PROPOSAL.md`, approved with the decisions recorded there |
 
 ## Features
 
@@ -77,11 +79,11 @@ Agreed scope as of 2026-10-04. A change to this document is a change to scope.
 ### 7. Scanning
 
 - A parallel, metadata-only walk of each pool. A scan never reads file contents.
-- Scans run on demand and on a schedule. All browsing is served from the index.
+- Scans run when the user starts one, including the first. A schedule is optional and off by default. All browsing is served from the index.
 - Progress is a true percentage, from the per-dataset file count ZFS reports.
 - Excluded by default: `.zfs` directories and Docker's per-layer datasets.
 - A benchmark and diagnostics command.
-- Scan intensity: before starting a scan by hand, the user chooses aggressive, balanced or low impact. Scheduled scans run at low impact unless configured otherwise; the first scan is aggressive. The gentler modes use fewer walkers at lower priority and rest between reads in proportion to how long the reads took, so they back off when the disks are busy. Their effect on a real pool is still to be measured ([issue #6](https://github.com/IsaacFW/reflectingpool/issues/6)).
+- Scan intensity: before starting a scan by hand, the user chooses aggressive, balanced or low impact. The dialog preselects balanced, then the last choice; a scheduled scan runs at the intensity set with its schedule. The gentler modes use fewer walkers at lower priority and rest between reads in proportion to how long the reads took, so they back off when the disks are busy. Their effect on a real pool is still to be measured ([issue #6](https://github.com/IsaacFW/reflectingpool/issues/6)).
 
 ### 8. Security
 
@@ -97,8 +99,10 @@ Working through many items to annotate or rename them has to be fast and easy. T
 
 - **One item at a time**: the review screen shows the current item's fields, with a preview of the item in a sidebar on the right side of the screen.
 - **Preview**: a best-effort preview of whatever the item is. Images, video, audio, PDF and text are shown directly, a folder as a listing of its contents, and anything else as its metadata.
-- **Keyboard**: Tab moves to the next field. Ctrl+Enter confirms and moves to the next item. Skipping an item is also a single keystroke.
-- **Review order**: the user builds the order from a list of sort keys, such as share, file type, size, age, folder and prefix. Example: share, then file type, largest first. The user works through one share, taking each file type in turn with its largest files first. When every item of that type is filled in or skipped, the queue moves to the next file type, and after the last type to the next share.
+- **Keyboard**: Tab moves to the next field. Ctrl+Enter confirms and moves to the next item; on a blank form it skips the item. Ctrl+Z goes back to the previous item once there is no typing left to undo.
+- **Folder-level tools**: describe the containing folder instead of the item, leave out items inside folders that are already described, and skip the rest of a group. A million files cannot be reviewed one at a time.
+- **Generated previews**: video the browser cannot play gets a poster frame, and RAW and HEIC photos get a thumbnail, in the first release.
+- **Review order**: the user builds the order from a list of sort keys, such as share, file type, size, age and folder. Example: share, then file type, largest first. The user works through one share, taking each file type in turn with its largest files first. When every item of that type is filled in or skipped, the queue moves to the next file type, and after the last type to the next share.
 - **Progress**: filled-in and skipped items are remembered in `.reflection/`, so a review can be stopped and resumed. The screen shows how many items remain in the current group.
 
 ## ZFS handling
@@ -151,6 +155,7 @@ For the reference deployment, to be confirmed by benchmark:
 - Automatic deduplication (hardlinking or deleting duplicates).
 - Looking inside archives or backup images.
 - Media-server integration, such as last-played data.
+- Phone layouts, for now.
 - Renaming, moving or deleting anything without an explicit user action, apart from the quarantine purge after its retention period.
 
 ## Open items
