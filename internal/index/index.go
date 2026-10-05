@@ -421,6 +421,22 @@ func (ix *Index) Children(ctx context.Context, parent int64, s Sort, limit, offs
 	return rows, total, err
 }
 
+// ChildDirs lists only the folders directly inside a directory, and how many
+// there are: what a folder tree shows. Parent 0 lists the scan roots.
+func (ix *Index) ChildDirs(ctx context.Context, parent int64, s Sort, limit, offset int) ([]Row, int64, error) {
+	order, err := s.sql()
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := ix.query(ctx, `SELECT `+rowCols+rowFrom+` WHERE e.parent = ? AND e.kind = 1`+order+limitSQL(limit, offset), parent)
+	if err != nil {
+		return nil, 0, err
+	}
+	var total int64
+	err = ix.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE parent = ? AND kind = 1`, parent).Scan(&total)
+	return rows, total, err
+}
+
 // Shares lists the top-level directories under every root.
 func (ix *Index) Shares(ctx context.Context) ([]Row, error) {
 	return ix.query(ctx, `SELECT `+rowCols+rowFrom+` WHERE e.id = e.share ORDER BY e.name COLLATE NOCASE`)

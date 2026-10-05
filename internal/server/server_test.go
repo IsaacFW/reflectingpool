@@ -270,6 +270,13 @@ func TestBrowseAnnotateAndReview(t *testing.T) {
 	if len(items) != 2 || items[0].(map[string]any)["path"] != h.root+"/media/big.mkv" {
 		t.Fatalf("videos = %s", r.raw)
 	}
+	// Folders only, for the folder tree: the root holds two shares and no files, a share holds no folders.
+	if r := h.expect(200, h.request("GET", "/api/tree?kind=dir&id="+rootID, nil, nil)); r.body["total"] != float64(2) || len(r.body["children"].([]any)) != 2 {
+		t.Errorf("folders in the root = %s", r.raw)
+	}
+	if r := h.expect(200, h.request("GET", "/api/tree?kind=dir&id="+h.id("media"), nil, nil)); r.body["total"] != float64(0) {
+		t.Errorf("folders in media = %s", r.raw)
+	}
 	h.expect(400, h.request("GET", "/api/entries?sort=bogus", nil, nil))
 	h.expect(400, h.request("GET", "/api/entries?limit=-1", nil, nil))
 	h.expect(404, h.request("GET", "/api/entries/999999", nil, nil))

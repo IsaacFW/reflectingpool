@@ -7,6 +7,7 @@ import { html, useEffect, useState } from './lib.js';
 import { VirtualList } from './list.js';
 import { FolderMap } from './map.js';
 import { go, href, prefs, route, setPref } from './state.js';
+import { FolderTree } from './tree.js';
 
 /** @typedef {import('./api.js').Entry} Entry */
 
@@ -185,6 +186,8 @@ export function Space() {
               <button type="button" aria-pressed=${mode === 'apparent' ? 'true' : 'false'} onClick=${() => setPref('size', 'apparent')}>Apparent</button>
             </div>
           </div>
+          <div class="ctl"><button class="btn small" type="button" aria-pressed=${prefs.value.tree ? "true" : "false"}
+            onClick=${() => setPref("tree", !prefs.value.tree)}>${prefs.value.tree ? "Hide the folder tree" : "Folder tree"}</button></div>
           ${folder && html`<div class="ctl"><span class="ctl-l">Map</span>
             <div class="seg" role="group" aria-label="How the map is drawn">
               ${[["map", "Areas"], ["icicle", "Bars"], ["off", "Off"]].map(([id, text]) => html`
@@ -204,6 +207,10 @@ export function Space() {
           </div>
         </div>
       </div>
+      <div class=${prefs.value.tree ? "with-tree" : ""}>
+        ${prefs.value.tree && html`<${FolderTree} current=${folder ? folder.path || path : ""} roots=${rootNames} mode=${mode}
+          onGo=${(/** @type {string} */ p) => go("space", { ...keep, path: p })} onClose=${() => setPref("tree", false)} />`}
+        <div class="stack">
       ${folder && prefs.value.map !== "off" && html`
         <${FolderMap} folder=${folder} mode=${mode} form=${prefs.value.map} version=${`${index}|${rev}`}
           selectedId=${selected ? selected.id : 0} onSelect=${setSelected} onOpen=${open} />`}
@@ -219,6 +226,8 @@ export function Space() {
             empty="This folder is empty." />
         </div>
         ${shown && html`<${Inspector} id=${shown.id} rev=${rev} onOpen=${open} onChanged=${() => setRev((n) => n + 1)} />`}
+      </div>
+        </div>
       </div>
     </div>`;
 }
