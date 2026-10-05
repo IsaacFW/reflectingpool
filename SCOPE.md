@@ -136,7 +136,10 @@ For the reference deployment, to be confirmed by benchmark:
 
 - Automated tests on fixture trees for the scanner, index, annotations, quarantine and login.
 - ZFS behaviour is verified on the reference server through the diagnostics command; the development machine has no ZFS.
-- First check on the server: an unprivileged container with `/dev/zfs` can list datasets and cannot snapshot or destroy. If that fails, the passthrough is dropped in favour of the host script.
+- Confirmed on the reference server on 2026-10-04 (Unraid 7.3.2, OpenZFS 2.4.3 with the image's 2.4.4 tools):
+  - an unprivileged container with `/dev/zfs` lists datasets and is refused when it tries to create a snapshot;
+  - a share mapped on its own is recognised as its ZFS dataset;
+  - the scan's on-disk total matches ZFS's own figure for the dataset, and its entry count matches ZFS's object count to within 0.1%.
 
 ## Out of scope
 
@@ -151,4 +154,4 @@ For the reference deployment, to be confirmed by benchmark:
 ## Open items
 
 - Presentation and frontend stack: decided at the design evaluation.
-- Whether the `/dev/zfs` passthrough behaves as expected on the reference server.
+- Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, saving annotations, and a scan at full scale.
