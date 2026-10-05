@@ -141,7 +141,7 @@ For the reference deployment, to be confirmed by benchmark:
   - an unprivileged container with `/dev/zfs` lists datasets and is refused when it tries to create a snapshot;
   - a share mapped on its own is recognised as its ZFS dataset;
   - the scan's on-disk total matches ZFS's own figure for the dataset, and its entry count matches ZFS's object count to within 0.1%;
-  - a whole pool of about 1.1 million entries across 13 datasets scans in 1 to 4 minutes, depending on what is cached, with 357 MiB peak memory. Every measured query is within its target except name search at 130 to 145 ms ([issue #7](https://github.com/IsaacFW/reflectingpool/issues/7)).
+  - a whole pool of about 1.1 million entries across 13 datasets scanned in 1 to 4 minutes with 357 MiB peak memory, measured while a large transfer was writing to the pool, so an idle pool should be no slower. Every measured query is within its target except name search at 130 to 145 ms ([issue #7](https://github.com/IsaacFW/reflectingpool/issues/7)).
 
 ## Out of scope
 
