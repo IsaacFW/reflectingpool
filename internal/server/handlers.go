@@ -196,9 +196,13 @@ func (s *Server) entries(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	}
 	ctx := r.Context()
 	var rows []index.Row
+	var totals index.Totals
 	err := s.app.View(func(ix *index.Index) error {
 		var err error
 		if rows, err = ix.Find(ctx, f, q.sort(), limit, offset); err != nil {
+			return err
+		}
+		if totals, err = ix.Count(ctx, f); err != nil {
 			return err
 		}
 		return ix.FillPaths(ctx, rows)
@@ -207,7 +211,65 @@ func (s *Server) entries(w http.ResponseWriter, r *http.Request, _ auth.Session)
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": rows})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": rows, "total": totals.Count, "total_size": totals.Size, "total_disk": totals.Disk,
+	})
+}
+
+// lookup returns the entry at a path. Paths outlive scans and entry IDs do
+// not, so this is how a client finds an item again after the index changes.
+func (s *Server) lookup(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		s.fail(w, badRequest("give the item's full path in the path parameter"))
+		return
+	}
+	ctx := r.Context()
+	var entry index.Row
+	err := s.app.View(func(ix *index.Index) error {
+		var err error
+		if entry, err = ix.Lookup(ctx, path); err != nil {
+			return err
+		}
+		entry.Path, err = ix.EntryPath(ctx, entry.ID)
+		return err
+	})
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entry": entry})
+}
+
+// scanStop ends the scan in progress; the previous index stays in use.
+func (s *Server) scanStop(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	if err := s.app.StopScan(); err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) getSettings(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	settings, err := s.app.Settings()
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, settings)
+}
+
+func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, sess auth.Session) {
+	var settings core.Settings
+	if err := decode(r, &settings); err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := s.app.SaveSettings(settings); err != nil {
+		s.fail(w, err)
+		return
+	}
+	s.getSettings(w, r, sess)
 }
 
 func (s *Server) entry(w http.ResponseWriter, r *http.Request, _ auth.Session) {

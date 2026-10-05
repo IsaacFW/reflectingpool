@@ -50,12 +50,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/setup", s.setup)
 	mux.HandleFunc("POST /api/login", s.login)
 
-	routes := map[string]authedHandler{
-		"POST /api/logout":                    s.logout,
-		"GET /api/session":                    s.session,
-		"GET /api/scan":                       s.scanStatus,
-		"POST /api/scan":                      s.scanStart,
-		"GET /api/storage":                    s.storage,
+	// Routes that take or return entry IDs are tied to one index: see authed.
+	byID := map[string]authedHandler{
 		"GET /api/shares":                     s.shares,
 		"GET /api/shares/{id}/annotations":    s.shareAnnotations,
 		"GET /api/tree":                       s.tree,
@@ -64,12 +60,28 @@ func (s *Server) Handler() http.Handler {
 		"PUT /api/entries/{id}/annotation":    s.putAnnotation,
 		"DELETE /api/entries/{id}/annotation": s.deleteAnnotation,
 		"GET /api/entries/{id}/content":       s.content,
-		"GET /api/prefixes":                   s.getPrefixes,
-		"PUT /api/prefixes":                   s.putPrefixes,
 		"POST /api/queue":                     s.queue,
 	}
-	for pattern, h := range routes {
-		mux.HandleFunc(pattern, s.authed(h))
+	// These work the same whichever index is in use, and are how a client
+	// finds its feet again after a scan.
+	anyIndex := map[string]authedHandler{
+		"POST /api/logout":        s.logout,
+		"GET /api/session":        s.session,
+		"GET /api/scan":           s.scanStatus,
+		"POST /api/scan":          s.scanStart,
+		"DELETE /api/scan":        s.scanStop,
+		"GET /api/settings":       s.getSettings,
+		"PUT /api/settings":       s.putSettings,
+		"GET /api/storage":        s.storage,
+		"GET /api/entries/lookup": s.lookup,
+		"GET /api/prefixes":       s.getPrefixes,
+		"PUT /api/prefixes":       s.putPrefixes,
+	}
+	for pattern, h := range byID {
+		mux.HandleFunc(pattern, s.authed(h, true))
+	}
+	for pattern, h := range anyIndex {
+		mux.HandleFunc(pattern, s.authed(h, false))
 	}
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -87,7 +99,7 @@ func (s *Server) headers(next http.Handler) http.Handler {
 		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		h.Set("Cache-Control", "no-store")
 		if !safeMethod(r.Method) && !sameOrigin(r) {
-			writeError(w, http.StatusForbidden, "cross-origin request refused")
+			writeError(w, http.StatusForbidden, "cross_origin", "cross-origin request refused")
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
@@ -147,7 +159,18 @@ func (s *Server) token(r *http.Request) string {
 	return c.Value
 }
 
-func (s *Server) authed(h authedHandler) http.HandlerFunc {
+// indexHeader carries the ID of the index in use: on every response, and on
+// requests from a client saying which index its entry IDs came from.
+const indexHeader = "X-RP-Index"
+
+// authed wraps a handler that needs a session.
+//
+// Entry IDs are reassigned by every scan, so an ID a client has been holding
+// can come to mean a different item. For routes that work with entry IDs
+// (byID), a request that names an older index is refused with 409 and the
+// code "index_changed"; the client then reloads and finds its place by path.
+// Requests that change something must name their index.
+func (s *Server) authed(h authedHandler, byID bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sess, err := s.auth.Authenticate(s.token(r))
 		if err != nil {
@@ -157,13 +180,32 @@ func (s *Server) authed(h authedHandler) http.HandlerFunc {
 		if !safeMethod(r.Method) {
 			got := r.Header.Get("X-CSRF-Token")
 			if subtle.ConstantTimeCompare([]byte(got), []byte(sess.CSRF)) != 1 {
-				writeError(w, http.StatusForbidden, "missing or wrong X-CSRF-Token header")
+				writeError(w, http.StatusForbidden, "csrf", "missing or wrong X-CSRF-Token header")
 				return
 			}
+		}
+		current := s.app.IndexID()
+		if current != "" {
+			w.Header().Set(indexHeader, current)
+		}
+		if byID {
+			claimed := r.Header.Get(indexHeader)
+			switch {
+			case claimed == "" && !safeMethod(r.Method):
+				s.fail(w, errIndexRequired)
+				return
+			case claimed != "" && current != "" && claimed != current:
+				s.fail(w, core.ErrIndexChanged)
+				return
+			}
+			// Checked again inside the operation, while the index is held.
+			r = r.WithContext(core.AtIndex(r.Context(), claimed))
 		}
 		h(w, r, sess)
 	}
 }
+
+var errIndexRequired = errors.New("this request changes something by entry ID, so it must name the index the ID came from in the " + indexHeader + " header")
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -171,8 +213,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
+// writeError sends an error with a stable code. Clients act on the code; the
+// message is for a person.
+func writeError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
 }
 
 // fail turns an error into a response. Errors the user can act on keep their
@@ -183,31 +227,52 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	var input core.InputError
 	var query index.QueryError
 	var tooBig *http.MaxBytesError
-	status := http.StatusInternalServerError
+	status, code := http.StatusInternalServerError, "internal"
 	switch {
 	case errors.As(err, &locked):
 		w.Header().Set("Retry-After", strconv.Itoa(int(locked.RetryAfter.Seconds())+1))
-		status = http.StatusTooManyRequests
-	case errors.Is(err, auth.ErrInvalid), errors.Is(err, auth.ErrNoSession):
-		status = http.StatusUnauthorized
-	case errors.Is(err, auth.ErrSetupCode), errors.Is(err, core.ErrReadOnly):
-		status = http.StatusForbidden
+		status, code = http.StatusTooManyRequests, "locked"
+	case errors.Is(err, auth.ErrNoSession):
+		status, code = http.StatusUnauthorized, "not_signed_in"
+	case errors.Is(err, auth.ErrInvalid):
+		status, code = http.StatusUnauthorized, "invalid_credentials"
+	case errors.Is(err, auth.ErrSetupCode):
+		status, code = http.StatusForbidden, "bad_setup_code"
+	case errors.Is(err, core.ErrReadOnly):
+		status, code = http.StatusForbidden, "read_only"
 	case errors.Is(err, index.ErrNotFound):
-		status = http.StatusNotFound
-	case errors.Is(err, auth.ErrSetupDone), errors.Is(err, core.ErrNoIndex), errors.Is(err, core.ErrScanRunning), errors.Is(err, core.ErrGone):
-		status = http.StatusConflict
-	case errors.As(err, &invalid), errors.As(err, &input), errors.As(err, &query), errors.As(err, new(badRequest)),
-		errors.Is(err, core.ErrNoShare), errors.Is(err, core.ErrNotFile):
-		status = http.StatusBadRequest
+		status, code = http.StatusNotFound, "not_found"
+	case errors.Is(err, auth.ErrSetupDone):
+		status, code = http.StatusConflict, "setup_done"
+	case errors.Is(err, core.ErrNoIndex):
+		status, code = http.StatusConflict, "no_index"
+	case errors.Is(err, core.ErrScanRunning):
+		status, code = http.StatusConflict, "scan_running"
+	case errors.Is(err, core.ErrNoScan):
+		status, code = http.StatusConflict, "no_scan"
+	case errors.Is(err, core.ErrGone):
+		status, code = http.StatusConflict, "gone"
+	case errors.Is(err, core.ErrIndexChanged):
+		status, code = http.StatusConflict, "index_changed"
+	case errors.Is(err, core.ErrClosed):
+		status, code = http.StatusServiceUnavailable, "shutting_down"
+	case errors.Is(err, errIndexRequired):
+		status, code = http.StatusBadRequest, "index_required"
+	case errors.Is(err, core.ErrNoShare):
+		status, code = http.StatusBadRequest, "not_in_share"
+	case errors.Is(err, core.ErrNotFile):
+		status, code = http.StatusBadRequest, "not_a_file"
+	case errors.As(err, &invalid), errors.As(err, &input), errors.As(err, &query), errors.As(err, new(badRequest)):
+		status, code = http.StatusBadRequest, "bad_request"
 	case errors.As(err, &tooBig):
-		status = http.StatusRequestEntityTooLarge
+		status, code = http.StatusRequestEntityTooLarge, "too_large"
 	}
 	if status == http.StatusInternalServerError {
 		log.Printf("internal error: %v", err)
-		writeError(w, status, "internal error; see the server log")
+		writeError(w, status, code, "internal error; see the server log")
 		return
 	}
-	writeError(w, status, err.Error())
+	writeError(w, status, code, err.Error())
 }
 
 type badRequest string

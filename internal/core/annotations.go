@@ -142,7 +142,7 @@ func datasetNames(ctx context.Context, ix *index.Index) (byDev map[uint64]string
 
 // Annotation returns what is recorded about an item, if anything.
 func (a *App) Annotation(ctx context.Context, id int64) (an meta.Annotation, found bool, err error) {
-	err = a.View(func(ix *index.Index) error {
+	err = a.viewAt(ctx, func(ix *index.Index) error {
 		t, err := a.target(ctx, ix, id)
 		if errors.Is(err, ErrNoShare) {
 			return nil
@@ -164,13 +164,29 @@ func (a *App) PutAnnotation(ctx context.Context, id int64, in AnnotationInput) (
 	if err := a.validate(&in); err != nil {
 		return meta.Annotation{}, err
 	}
+	// Saving a form with nothing in it is how an item is passed over. Stored
+	// any other way it would count as reviewed while recording nothing.
+	onlySkip := in.Note == "" && in.DisplayName == "" && len(in.Prefixes) == 0 && in.Owner == "" && in.ReviewAfter == ""
+	if onlySkip {
+		in.Skipped = true
+	}
 	var an meta.Annotation
-	err := a.View(func(ix *index.Index) error {
+	err := a.viewAt(ctx, func(ix *index.Index) error {
 		t, err := a.target(ctx, ix, id)
 		if err != nil {
 			return err
 		}
 		ident, err := a.liveIdentity(ctx, ix, t)
+		if errors.Is(err, ErrGone) && onlySkip {
+			// A skip needs nothing from the item itself. Without this, an
+			// item that has left the disk could not be passed over and
+			// would sit at the head of a review queue until the next scan.
+			byDev, _, derr := datasetNames(ctx, ix)
+			if derr != nil {
+				return derr
+			}
+			ident, err = meta.Identity{Dataset: byDev[t.row.Dev], Ino: t.row.Ino, Btime: t.row.Btime, BtimeNs: t.row.BtimeNsec}, nil
+		}
 		if err != nil {
 			return err
 		}
@@ -193,7 +209,7 @@ func (a *App) DeleteAnnotation(ctx context.Context, id int64) error {
 	if a.cfg.ReadOnly {
 		return ErrReadOnly
 	}
-	return a.View(func(ix *index.Index) error {
+	return a.viewAt(ctx, func(ix *index.Index) error {
 		t, err := a.target(ctx, ix, id)
 		if err != nil {
 			return err
@@ -254,7 +270,7 @@ func (a *App) fingerprint(path string) (string, error) {
 func (a *App) OpenContent(ctx context.Context, id int64) (*os.File, index.Row, error) {
 	var f *os.File
 	var row index.Row
-	err := a.View(func(ix *index.Index) error {
+	err := a.viewAt(ctx, func(ix *index.Index) error {
 		var err error
 		if row, err = ix.Entry(ctx, id); err != nil {
 			return err

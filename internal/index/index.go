@@ -122,8 +122,14 @@ func Open(path string) (*Index, error) {
 		db.Close()
 		return nil, fmt.Errorf("index %s: %w", path, err)
 	}
+	// The file name carries the scan's start time to the millisecond, which
+	// makes it unique among the indexes of one installation.
+	ix.Info.ID = strings.TrimSuffix(filepath.Base(path), ".db")
 	return ix, nil
 }
+
+// ID names this index; see Info.ID.
+func (ix *Index) ID() string { return ix.Info.ID }
 
 func (ix *Index) Close() error { return ix.db.Close() }
 
@@ -431,6 +437,35 @@ func (ix *Index) Find(ctx context.Context, f Filter, s Sort, limit, offset int) 
 		return nil, err
 	}
 	return ix.query(ctx, `SELECT `+rowCols+rowFrom+where+order+limitSQL(limit, offset), args...)
+}
+
+// Totals is how much a filter matches in all, whatever page was asked for.
+type Totals struct {
+	Count int64 `json:"total"`
+	// Size and Disk add up files only, each hardlinked file once. They are
+	// absent when the filter can match folders, whose sizes already include
+	// their contents and so cannot be summed.
+	Size *int64 `json:"total_size"`
+	Disk *int64 `json:"total_disk"`
+}
+
+// Count returns the totals for a filter.
+func (ix *Index) Count(ctx context.Context, f Filter) (Totals, error) {
+	where, args, err := f.where()
+	if err != nil {
+		return Totals{}, err
+	}
+	var t Totals
+	var size, disk int64
+	q := `SELECT COUNT(*), COALESCE(SUM(CASE WHEN e.counted THEN e.size ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN e.counted THEN e.disk ELSE 0 END), 0)` + rowFrom + where
+	if err := ix.db.QueryRowContext(ctx, q, args...).Scan(&t.Count, &size, &disk); err != nil {
+		return Totals{}, err
+	}
+	if f.Kind == "file" {
+		t.Size, t.Disk = &size, &disk
+	}
+	return t, nil
 }
 
 // ByInode lists every entry for one inode: a file and its hardlinks.

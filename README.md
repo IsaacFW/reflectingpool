@@ -56,6 +56,12 @@ On first start the container log shows two things you need:
 - **A setup code.** Creating the admin account requires it, so nobody else on the network can claim the server first.
 - **The certificate's SHA-256 fingerprint.** The certificate is self-signed, so the browser will warn once; the fingerprint lets you confirm the certificate it shows is this one.
 
+Nothing is scanned until you ask. The server never scans by itself unless you set a schedule. Until the web interface exists, start a scan from the command line; a running server picks the result up within half a minute:
+
+```sh
+docker exec reflectingpool reflectingpool scan -intensity balanced
+```
+
 ## Check it on your server
 
 Three commands, none of which change anything on the pool:
@@ -76,9 +82,11 @@ A scan can run at three intensities, which trade speed for how much they disturb
 
 | Intensity | What it does | When it is used |
 |---|---|---|
-| `aggressive` | 32 walkers at normal priority. Fastest; on a busy pool it takes about half the disks' attention | The first scan, and any scan started without choosing |
+| `aggressive` | 32 walkers at normal priority. Fastest; on a busy pool it takes about half the disks' attention | When asked for, and when a scan is started without choosing |
 | `balanced` | 4 walkers at reduced priority, resting half as long as each read took | When asked for |
-| `low` | 1 walker at the lowest priority, resting three times as long as each read took, so it backs off further when the disks are busy | Scheduled scans, by default |
+| `low` | 1 walker at the lowest priority, resting three times as long as each read took, so it backs off further when the disks are busy | When asked for; the suggested setting for a schedule |
+
+A daily scan at a set time and intensity can be switched on through `PUT /api/settings`. It is off by default. If the server is not running at that time, the scan is skipped for the day, not started late.
 
 To see what an intensity costs other work on your pool, start something that uses the disks, note its speed, and run a timed walk beside it:
 
@@ -115,8 +123,6 @@ All settings are environment variables.
 | `RP_TRUST_PROXY` | off | `1` trusts `X-Forwarded-For` and `X-Forwarded-Proto` from that proxy |
 | `RP_READ_ONLY` | off | `1` disables everything that changes files, annotations included |
 | `RP_EXCLUDE` | | Extra directories to skip, comma-separated absolute paths |
-| `RP_SCAN_INTERVAL` | `24h` | Time between scheduled scans; `0` disables them |
-| `RP_SCAN_INTENSITY` | `low` | Intensity of scheduled scans: `aggressive`, `balanced` or `low` |
 | `RP_WORKERS` | 4 per core, 8 to 32 | Parallel directory walkers for an aggressive scan |
 | `RP_ZFS_LIST_FILE` | `<RP_DATA>/zfs-list.txt` | Output of the host script above |
 
@@ -139,12 +145,21 @@ Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's im
 
 Everything but the first three routes needs the session cookie; anything but `GET` also needs the `X-CSRF-Token` header returned by login.
 
+**Entry IDs belong to one index.** Every scan builds a new index and numbers its entries afresh, so an ID kept from before a scan can come to mean a different item. Each response names the index in use in an `X-RP-Index` header. Send that value back in the same header:
+
+- a request that changes something by entry ID is refused without it (`400`, code `index_required`);
+- any request that names an index which has since been replaced is refused (`409`, code `index_changed`). Find the item again with `GET /api/entries/lookup?path=`; paths outlive scans.
+
+**Errors** are `{"error": "message for a person", "code": "stable_code"}`. Act on the code.
+
 | Route | Purpose |
 |---|---|
 | `GET /api/health` | Liveness, and whether setup is still needed |
 | `POST /api/setup` | Create the admin account with the setup code |
 | `POST /api/login`, `POST /api/logout`, `GET /api/session` | Sessions |
-| `GET /api/scan`, `POST /api/scan` | Scan status and progress; start a scan, optionally with `{"intensity": "aggressive" \| "balanced" \| "low"}` |
+| `GET /api/scan`, `POST /api/scan`, `DELETE /api/scan` | Scan status, progress, schedule and recent scans; start a scan, optionally with `{"intensity": "aggressive" \| "balanced" \| "low"}`; stop the running scan |
+| `GET`, `PUT /api/settings` | The optional daily scan: on or off, time of day, intensity |
+| `GET /api/entries/lookup?path=` | The entry at a path |
 | `GET /api/storage` | Datasets with usage and, where available, snapshot accounting |
 | `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown |
 | `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix |

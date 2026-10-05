@@ -54,10 +54,7 @@ Settings come from the environment:
   RP_TRUST_PROXY    1 to trust X-Forwarded-For and X-Forwarded-Proto
   RP_READ_ONLY      1 to disable everything that changes files
   RP_EXCLUDE        extra directories to skip, comma-separated absolute paths
-  RP_SCAN_INTERVAL  time between scheduled scans (default 24h, 0 to disable)
-  RP_SCAN_INTENSITY how hard scheduled scans lean on the disks: aggressive,
-                    balanced or low (default low)
-  RP_WORKERS        parallel directory walkers for an aggressive scan
+  RP_WORKERS       parallel directory walkers for an aggressive scan
                     (default: 4 per core, 8 to 32)
   RP_ZFS_LIST_FILE  output of the host script, when /dev/zfs is not passed in
                     (default <RP_DATA>/zfs-list.txt)
@@ -100,9 +97,6 @@ type settings struct {
 	cert, key    string
 	insecureHTTP bool
 	trustProxy   bool
-	scanInterval time.Duration
-	// scheduled is the intensity of scans nobody is waiting for.
-	scheduled scan.Intensity
 }
 
 func envList(name string) []string {
@@ -134,7 +128,6 @@ func loadSettings() (settings, error) {
 		key:          os.Getenv("RP_TLS_KEY"),
 		insecureHTTP: envBool("RP_INSECURE_HTTP"),
 		trustProxy:   envBool("RP_TRUST_PROXY"),
-		scanInterval: 24 * time.Hour,
 	}
 	s.core = core.Config{
 		Roots:    envList("RP_ROOTS"),
@@ -162,20 +155,6 @@ func loadSettings() (settings, error) {
 			return s, fmt.Errorf("RP_WORKERS: %q is not a positive number", v)
 		}
 		s.core.Workers = n
-	}
-	if v := os.Getenv("RP_SCAN_INTERVAL"); v != "" {
-		d, err := time.ParseDuration(v)
-		if v == "0" {
-			d, err = 0, nil
-		}
-		if err != nil || d < 0 {
-			return s, fmt.Errorf("RP_SCAN_INTERVAL: %q is not a duration such as 24h", v)
-		}
-		s.scanInterval = d
-	}
-	var err error
-	if s.scheduled, err = scan.ParseIntensity(envOr("RP_SCAN_INTENSITY", "low")); err != nil {
-		return s, fmt.Errorf("RP_SCAN_INTENSITY: %w", err)
 	}
 	if (s.cert == "") != (s.key == "") {
 		return s, errors.New("RP_TLS_CERT and RP_TLS_KEY must be set together")
@@ -236,7 +215,11 @@ func cmdServe() error {
 		log.Printf("read-only mode: nothing on the pool will be changed")
 	}
 
-	go schedule(ctx, app, s.scanInterval, s.scheduled)
+	// The server never scans by itself unless the user has set a schedule.
+	if app.IndexID() == "" {
+		log.Printf("Nothing has been scanned yet. Start a scan from the web interface, or run: reflectingpool scan")
+	}
+	go app.RunScheduler(ctx)
 
 	errc := make(chan error, 1)
 	switch {
@@ -266,46 +249,6 @@ func cmdServe() error {
 	shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdown)
-}
-
-// schedule scans once at start if there is no index yet, then on an interval.
-// The first scan is aggressive, because nothing can be browsed until it
-// finishes; later ones run at the configured intensity, because nobody is
-// waiting for them.
-func schedule(ctx context.Context, app *core.App, every time.Duration, scheduled scan.Intensity) {
-	run := func(why string, intensity scan.Intensity) {
-		log.Printf("scan started (%s, %s intensity)", why, intensity)
-		start := time.Now()
-		info, err := app.Scan(ctx, intensity)
-		switch {
-		case errors.Is(err, core.ErrScanRunning):
-			log.Printf("scan skipped: one is already running")
-		case err != nil:
-			log.Printf("scan failed: %v", err)
-		default:
-			log.Printf("scan finished in %s: %d files, %d folders, %s on disk, %d errors",
-				time.Since(start).Round(time.Millisecond), info.Files, info.Dirs, human(info.Disk), info.Errors)
-			for _, w := range app.ScanStatus().Warnings {
-				log.Printf("warning: %s", w)
-			}
-		}
-	}
-	if app.ScanStatus().Index == nil {
-		run("no index yet", scan.Aggressive)
-	}
-	if every <= 0 {
-		return
-	}
-	t := time.NewTicker(every)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			run("scheduled", scheduled)
-		}
-	}
 }
 
 func cmdScan(args []string) error {
