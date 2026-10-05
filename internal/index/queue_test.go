@@ -231,6 +231,10 @@ func TestCoveredFolders(t *testing.T) {
 	if got := names(queue(t, ix, folders).Items); !equal(got, []string{"docs", "media", "taxes", "tv"}) {
 		t.Errorf("folders left = %v", got)
 	}
+	// Every listing says which rows sit inside a described folder.
+	if in, out := lookup(t, ix, root, "media/movies/alien/extras/making-of.mkv"), lookup(t, ix, root, "media/tv/pilot.mkv"); !in.Covered || out.Covered {
+		t.Errorf("covered marker: inside=%v outside=%v", in.Covered, out.Covered)
+	}
 	// A queue that did not ask for it is unaffected.
 	if q := queue(t, ix, plain); q.Remaining != 5 {
 		t.Errorf("plain queue remaining = %d", q.Remaining)

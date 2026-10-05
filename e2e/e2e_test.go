@@ -17,13 +17,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 )
@@ -71,6 +74,13 @@ func tree(root string) {
 	if err := os.Link(filepath.Join(root, "media/movies/short.mp4"), filepath.Join(root, "docs/short-link.mp4")); err != nil {
 		panic(err)
 	}
+	write(filepath.Join(root, "inbox/a.mkv"), make([]byte, 300<<10))
+	write(filepath.Join(root, "inbox/b.mkv"), make([]byte, 200<<10))
+	write(filepath.Join(root, "inbox/c.mp4"), make([]byte, 100<<10))
+	write(filepath.Join(root, "inbox/sub/deep1.txt"), make([]byte, 500))
+	write(filepath.Join(root, "inbox/sub/deep2.txt"), make([]byte, 400))
+	write(filepath.Join(root, "inbox/x.txt"), make([]byte, 100))
+	write(filepath.Join(root, "inbox/last.txt"), make([]byte, 50))
 	for i := range 3000 {
 		write(filepath.Join(root, fmt.Sprintf("docs/many/file-%04d.bin", i)), make([]byte, 3000-i))
 	}
@@ -164,6 +174,7 @@ type page struct {
 
 	mu        sync.Mutex
 	complaint []string
+	allow     []string // parts of complaints this test brings about on purpose
 }
 
 func open(t *testing.T) *page {
@@ -198,7 +209,7 @@ func open(t *testing.T) *page {
 			// Being signed out is asked for on purpose: the page finds out
 			// whether there is a session by asking for it. A wrong password
 			// is tried on purpose too.
-			if strings.Contains(m.Text, "status of 401") {
+			if strings.Contains(m.Text, "status of 401") || slices.ContainsFunc(p.allow, func(a string) bool { return strings.Contains(m.Text, a) }) {
 				continue
 			}
 			if m.IsException() || m.Type == "error" || m.Type == "warning" {
@@ -553,6 +564,145 @@ func TestScanInProgress(t *testing.T) {
 		chromedp.Click(`.vl-row`),
 		chromedp.WaitVisible(`.insp .facts`),
 	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+// signIn opens an address in a new tab's first visit, where there is no
+// session yet, and signs in. The page stays at the address it was opened at.
+func (p *page) signIn(step, address string, ready string) {
+	p.t.Helper()
+	p.do(step,
+		chromedp.Navigate(base+address), chromedp.WaitVisible(`#si-user`),
+		chromedp.SendKeys(`#si-user`, user), chromedp.SendKeys(`#si-pass`, password),
+		chromedp.Click(`button[type=submit]`),
+		chromedp.WaitVisible(ready),
+	)
+}
+
+// eventually waits for a file in the pool to contain some text: saves are
+// written behind the screen, a moment after it has moved on.
+func eventually(t *testing.T, file, want string) {
+	t.Helper()
+	var data []byte
+	for range 100 {
+		data, _ = os.ReadFile(filepath.Join(root, file))
+		if strings.Contains(string(data), want) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Errorf("%s never contained %q; it holds %q", file, want, data)
+}
+
+var (
+	ctrl = chromedp.KeyModifiers(kb.ModifierCtrl)
+	alt  = chromedp.KeyModifiers(kb.ModifierAlt)
+)
+
+// heading waits for the review screen to be on the item with this name.
+func heading(name string) chromedp.Action[chromedp.Void] {
+	return chromedp.WaitVisible(fmt.Sprintf(`//div[contains(@class,"rv-form")]//h2[.=%q]`, name))
+}
+
+func TestReview(t *testing.T) {
+	p := open(t)
+	// A file deleted under the review and a cut network are part of the test.
+	p.allow = []string{"status of 409", "ERR_BLOCKED_BY_CLIENT", "Failed to fetch"}
+	// One share, by file type: the films (600 kB) come before the text files.
+	p.signIn("review 01 signed in", "/review?shares=inbox&groups=type", `#rv-note`)
+	p.do("review 02 the largest film is first", heading("a.mkv"),
+		until(`document.querySelector('.gnow .cnt').textContent === '3' && document.activeElement.id === 'rv-note'`))
+
+	// Ctrl+Enter saves and moves on at once; with nothing typed it skips.
+	p.do("review 03 saved and on to the next",
+		chromedp.SendKeys(`#rv-note`, "First film"), chromedp.KeyEvent(kb.Enter, ctrl), heading("b.mkv"))
+	eventually(t, "inbox/.reflection/annotations.jsonl", "First film")
+	p.do("review 04 skipped with a blank form", chromedp.KeyEvent(kb.Enter, ctrl), heading("c.mp4"))
+	eventually(t, "inbox/.reflection/skipped.jsonl", "b.mkv")
+
+	// Ctrl+Z goes back when nothing is typed; Ctrl+Enter then returns.
+	p.do("review 05 back one item",
+		chromedp.KeyEvent("z", ctrl), heading("b.mkv"),
+		chromedp.WaitVisible(`//div[contains(@class,"note-line")][contains(., "Looking back")]`),
+		chromedp.KeyEvent(kb.Enter, ctrl), heading("c.mp4"),
+	)
+	// Up in the empty note brings back the last note; Down clears it again.
+	p.do("review 06 the last note comes back",
+		until(`document.activeElement.id === 'rv-note'`),
+		chromedp.KeyEvent(kb.ArrowUp), until(`document.querySelector('#rv-note').value === 'First film'`),
+		chromedp.KeyEvent(kb.ArrowDown), until(`document.querySelector('#rv-note').value === ''`),
+	)
+
+	// The rest of the group in one go, and the next group starts.
+	p.do("review 07 skip the rest of the group",
+		chromedp.Click(has("button", "Skip the rest of this group")),
+		chromedp.Click(has("button", "Yes, skip them")),
+		heading("deep1.txt"),
+		chromedp.WaitVisible(`//div[contains(@class,"note-line")][contains(., "Finished video")]`),
+	)
+	eventually(t, "inbox/.reflection/skipped.jsonl", "c.mp4")
+
+	// Describe the folder instead: what is inside it leaves the queue.
+	p.do("review 08 the folder instead",
+		chromedp.KeyEvent(kb.ArrowUp, alt), heading("sub"),
+		chromedp.SendKeys(`#rv-note`, "Scratch folder"), chromedp.KeyEvent(kb.Enter, ctrl),
+		heading("x.txt"),
+		chromedp.WaitVisible(`//div[contains(@class,"note-line")][contains(., "2 items inside it left the queue")]`),
+	)
+
+	// The item is deleted before its note is saved: the note is not lost
+	// without a word, and the item can still be passed over.
+	if err := os.Remove(filepath.Join(root, "inbox/x.txt")); err != nil {
+		t.Fatal(err)
+	}
+	p.do("review 09 a note for a file that has gone",
+		chromedp.SendKeys(`#rv-note`, "written too late"), chromedp.KeyEvent(kb.Enter, ctrl),
+		chromedp.WaitVisible(`//div[contains(@class,"banner")][contains(., "Not saved: x.txt")][contains(., "no longer where")]`),
+		chromedp.Click(has("button", "Skip it")),
+		heading("last.txt"),
+	)
+
+	// A save that cannot reach the server: the text is kept, and Retry
+	// sends it. The browser is told to refuse the request, which is what a
+	// dropped connection looks like to the page.
+	offline := func(off bool) chromedp.Action[chromedp.Void] {
+		return func(ctx context.Context, t *chromedp.Target) (chromedp.Void, error) {
+			if _, err := cdp.Call(ctx, t, network.Enable, network.EnableParams{}); err != nil {
+				return chromedp.Void{}, err
+			}
+			var block []*network.BlockPattern
+			if off {
+				block = []*network.BlockPattern{{URLPattern: "*://*:*/api/entries/*/annotation", Block: true}}
+			}
+			_, err := cdp.Call(ctx, t, network.SetBlockedURLs, network.SetBlockedURLsParams{URLPatterns: block})
+			return chromedp.Void{}, err
+		}
+	}
+	p.do("review 10 the network drops",
+		offline(true),
+		chromedp.SendKeys(`#rv-note`, "kept while offline"), chromedp.KeyEvent(kb.Enter, ctrl),
+		chromedp.WaitVisible(`//div[contains(@class,"banner")][contains(., "Not saved: last.txt")][contains(., "Your text is kept")]`),
+	)
+	p.do("review 11 retry once it is back",
+		offline(false),
+		chromedp.Click(has("button", "Retry")),
+		chromedp.WaitVisible(has("h2", "This queue is finished")),
+	)
+	eventually(t, "inbox/.reflection/annotations.jsonl", "kept while offline")
+
+	// Another order, chosen in the builder, with a look at what it gives.
+	p.do("review 12 the builder",
+		chromedp.Click(has("button", "Build another queue")),
+		chromedp.Click(has("button", "Folders first, largest first")),
+		chromedp.WaitVisible(`//div[contains(@class,"bprev")]//b[contains(., "to go") or contains(., "item")]`),
+	)
+	p.do("review 13 a queue of folders",
+		chromedp.Click(has("button", "Use this order")),
+		until(`location.search.includes('kind=dir') && !!document.querySelector('#rv-note')`),
+	)
+
 	if c := p.complaints(); len(c) > 0 {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}

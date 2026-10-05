@@ -3,8 +3,9 @@
 // preview and form.
 import { api, contentURL, FLAG, indexId, session, STATE, superseded } from './api.js';
 import { ago, bytes, count, date, plural } from './format.js';
-import { html, useEffect, useState } from './lib.js';
+import { html, useEffect, useRef, useState } from './lib.js';
 import { prefs, say } from './state.js';
+import { bodyOf, Fields, formFrom, isBlank, loadPrefixes, prefixList } from './annotate.js';
 
 /** @typedef {import('./api.js').Entry} Entry */
 /** @typedef {import('./api.js').Annotation} Annotation */
@@ -69,37 +70,56 @@ function FolderPreview(/** @type {{entry: Entry}} */ { entry }) {
     ${kids.total > kids.children.length && html`<div class="pv-cap">The largest ${kids.children.length} of ${count(kids.total)}.</div>`}`;
 }
 
+/** A picture at the size of the window, over the page. Click or Esc closes it. */
+function Lightbox(/** @type {{src: string, name: string, onClose: () => void}} */ { src, name, onClose }) {
+  const ref = useRef(/** @type {HTMLDialogElement | null} */ (null));
+  useEffect(() => {
+    if (ref.current && !ref.current.open) ref.current.showModal();
+  }, []);
+  return html`
+    <dialog class="lightbox" ref=${ref} aria-label=${'Picture: ' + name} onClose=${onClose} onClick=${onClose}>
+      <img src=${src} alt=${name} />
+      <div class="pv-cap">${name} · click or press Esc to close</div>
+    </dialog>`;
+}
+
 /**
  * A best-effort look at the item itself.
- * @param {{entry: Entry}} props
+ * @param {{entry: Entry, large?: boolean}} props large gives it the room of the review screen
  */
-export function Preview({ entry }) {
+export function Preview({ entry, large }) {
   const [broken, setBroken] = useState(false);
   const [asked, setAsked] = useState(false);
-  useEffect(() => { setBroken(false); setAsked(false); }, [entry.id]);
+  const [big, setBig] = useState(false);
+  useEffect(() => { setBroken(false); setAsked(false); setBig(false); }, [entry.id]);
   const src = contentURL(entry.id);
+  const cls = 'pv ' + (large ? 'large' : 'compact');
   const none = (/** @type {string} */ why) => html`<div class="pv-msg"><b>No preview.</b>${why}</div>`;
   // Large files are fetched only when asked for.
   const ask = (/** @type {string} */ what) => html`
     <div class="pv-msg"><b>${what}, ${bytes(entry.size)}.</b>
       <button class="btn small" type="button" onClick=${() => setAsked(true)}>Load the preview</button></div>`;
 
-  if (entry.kind === 'dir') return html`<div class="pv compact"><${FolderPreview} entry=${entry} /></div>`;
+  if (entry.kind === 'dir') return html`<div class=${cls}><${FolderPreview} entry=${entry} /></div>`;
   if (entry.kind !== 'file') return none(entry.kind === 'symlink' ? 'This is a link to another place.' : 'This is not a regular file.');
   if (entry.size === 0) return none('The file is empty.');
   if (broken) return none('The file could not be shown. This browser may not support its format, or the file has moved since the last scan.');
 
   let body;
   if (IMAGES.includes(entry.ext)) {
-    body = entry.size > 50 * MiB && !asked ? ask('A large image')
-      : html`<img src=${src} alt="" onError=${() => setBroken(true)} />`;
+    body = entry.size > 50 * MiB && !asked ? ask('A large image') : html`
+      <button class="pv-zoom" type="button" title="Show it large" onClick=${() => setBig(true)}>
+        <img src=${src} alt=${'Preview of ' + entry.name} onError=${() => setBroken(true)} />
+      </button>
+      ${big && html`<${Lightbox} src=${src} name=${entry.name} onClose=${() => setBig(false)} />`}`;
   } else if (VIDEOS.includes(entry.ext)) {
     body = html`<video src=${src} controls preload="metadata" onError=${() => setBroken(true)}></video>`;
   } else if (AUDIO.includes(entry.ext)) {
     body = html`<audio src=${src} controls preload="none" onError=${() => setBroken(true)}></audio>`;
   } else if (entry.ext === 'pdf') {
-    body = entry.size > 150 * MiB && !asked ? ask('A large PDF')
-      : html`<iframe src=${src} title=${'Preview of ' + entry.name}></iframe>`;
+    body = entry.size > 150 * MiB && !asked ? ask('A large PDF') : html`
+      <iframe src=${src} title=${'Preview of ' + entry.name}></iframe>
+      <a class="pv-cap" href=${src} target="_blank" rel="noopener">Open it in a tab of its own</a>`;
   } else if (entry.type === 'text' || entry.type === 'subtitle') {
     body = html`<${TextPreview} entry=${entry} />`;
   } else {
@@ -107,7 +127,7 @@ export function Preview({ entry }) {
       ? 'This browser cannot show this format. Generated previews for such files are on the way.'
       : 'There is nothing to show for this kind of file.');
   }
-  return html`<div class="pv compact">${body}</div>`;
+  return html`<div class=${cls}>${body}</div>`;
 }
 
 /** The marks next to a name: what is recorded about the item and what is unusual about it. */
@@ -115,6 +135,7 @@ export function Marks(/** @type {{entry: Entry}} */ { entry }) {
   const out = [];
   if (entry.state & (STATE.note | STATE.prefix | STATE.displayName)) out.push(html`<span class="mark noted" key="d">described</span>`);
   else if (entry.state & STATE.skipped) out.push(html`<span class="mark" key="s" title="Skipped in a review">skipped</span>`);
+  else if (entry.covered) out.push(html`<span class="mark" key="c" title="Inside a described folder">covered</span>`);
   if (entry.kind === 'file' && entry.nlink > 1) {
     out.push(html`<span class="mark" key="l" title=${entry.counted ? 'Hardlinked. Its size is counted here.' : 'Hardlinked. Its size is counted at its other name.'}>${entry.nlink} links</span>`);
   }
@@ -123,56 +144,26 @@ export function Marks(/** @type {{entry: Entry}} */ { entry }) {
   return out;
 }
 
-/** Turns "6m" or "1y" into a date; leaves a date as it is. */
-function resolveReview(/** @type {string} */ text) {
-  const m = /^(\d+)\s*([dwmy])$/i.exec(text.trim());
-  if (!m) return text.trim();
-  const d = new Date();
-  const n = Number(m[1]);
-  const unit = m[2].toLowerCase();
-  if (unit === 'd') d.setDate(d.getDate() + n);
-  if (unit === 'w') d.setDate(d.getDate() + 7 * n);
-  if (unit === 'm') d.setMonth(d.getMonth() + n);
-  if (unit === 'y') d.setFullYear(d.getFullYear() + n);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 /**
- * The fields that record what an item is for.
+ * The note form as the inspector has it: for the one item being looked at.
  * @param {{entry: Entry, annotation: Annotation | null, onSaved: () => void}} props
  */
 export function AnnotationForm({ entry, annotation, onSaved }) {
-  const blank = { note: '', prefixes: '', display_name: '', owner: '', review_after: '' };
-  const from = (/** @type {Annotation | null} */ a) => (a && !a.skipped ? {
-    note: a.note || '', prefixes: (a.prefixes || []).join(', '), display_name: a.display_name || '',
-    owner: a.owner || '', review_after: a.review_after || '',
-  } : blank);
-  const [form, setForm] = useState(from(annotation));
-  const [known, setKnown] = useState(/** @type {{name: string, meaning: string}[]} */ ([]));
+  const [form, setForm] = useState(formFrom(annotation));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const readOnly = !!(session.value && session.value.read_only);
-  const outside = entry.share === 0;
+  const empty = isBlank(form);
 
-  useEffect(() => {
-    api('GET', '/api/prefixes').then((r) => setKnown(r.prefixes)).catch(() => {});
-  }, []);
-
-  const set = (/** @type {string} */ k) => (/** @type {Event} */ e) =>
-    setForm({ ...form, [k]: /** @type {HTMLInputElement} */ (e.target).value });
-  const empty = !Object.values(form).some((v) => v.trim());
-  const review = resolveReview(form.review_after);
+  useEffect(() => { if (!prefixList.value) loadPrefixes(); }, []);
 
   async function save(/** @type {Event} */ e) {
     e.preventDefault();
-    if (empty || busy) return;
+    if (empty || busy || readOnly) return;
     setBusy(true);
     setError('');
     try {
-      await api('PUT', `/api/entries/${entry.id}/annotation`, {
-        note: form.note, display_name: form.display_name, owner: form.owner, review_after: review,
-        prefixes: form.prefixes.split(',').map((p) => p.trim()).filter(Boolean),
-      });
+      await api('PUT', `/api/entries/${entry.id}/annotation`, bodyOf(form));
       say(`Saved: ${entry.name}`);
       onSaved();
     } catch (err) {
@@ -194,7 +185,7 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
     setBusy(false);
   }
 
-  if (outside) {
+  if (entry.share === 0) {
     return html`<p class="hint">Notes are kept inside each share, so only items inside a share can have one.</p>`;
   }
   const off = readOnly || busy;
@@ -203,31 +194,7 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
       onKeyDown=${(/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save(e); }}>
       ${readOnly && html`<p class="hint">Read-only mode: nothing can be recorded.</p>`}
       ${annotation && annotation.skipped && html`<p class="hint">This item was skipped in a review.</p>`}
-      <div class="field">
-        <label for="an-note">What is it for?</label>
-        <textarea id="an-note" rows="3" maxlength="10000" disabled=${off} value=${form.note} onInput=${set('note')}></textarea>
-      </div>
-      ${known.length > 0 && html`
-        <div class="field">
-          <label for="an-prefixes">Prefixes</label>
-          <input id="an-prefixes" type="text" list="an-prefix-list" disabled=${off} value=${form.prefixes} onInput=${set('prefixes')} />
-          <datalist id="an-prefix-list">${known.map((p) => html`<option key=${p.name} value=${p.name}>${p.meaning}</option>`)}</datalist>
-          <span class="hint">Separate several with commas. Known: ${known.map((p) => p.name).join(', ')}.</span>
-        </div>`}
-      <div class="field">
-        <label for="an-display">Display name</label>
-        <input id="an-display" type="text" maxlength="255" disabled=${off} value=${form.display_name} onInput=${set('display_name')} />
-        <span class="hint">A readable name shown here. The name on disk does not change.</span>
-      </div>
-      <div class="field">
-        <label for="an-owner">Owner</label>
-        <input id="an-owner" type="text" maxlength="100" disabled=${off} value=${form.owner} onInput=${set('owner')} />
-      </div>
-      <div class="field">
-        <label for="an-review">Review after</label>
-        <input id="an-review" type="text" placeholder="2027-01-31, or 6m, 1y" disabled=${off} value=${form.review_after} onInput=${set('review_after')} />
-        ${review && review !== form.review_after.trim() && html`<span class="hint">That is ${review}.</span>`}
-      </div>
+      <${Fields} form=${form} onChange=${setForm} disabled=${off} />
       ${error && html`<p class="err" role="alert">${error}</p>`}
       <div class="actions">
         <button class="btn primary" type="submit" disabled=${off || empty}>Save <span class="kbd">Ctrl+Enter</span></button>
