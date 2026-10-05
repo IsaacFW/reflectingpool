@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IsaacFW/reflectingpool/internal/appdb"
 	"github.com/IsaacFW/reflectingpool/internal/index"
@@ -459,6 +460,140 @@ func TestCloseStopsAndWaitsForAScan(t *testing.T) {
 		if _, err := e.app.Scan(context.Background(), scan.Aggressive); !errors.Is(err, ErrClosed) {
 			t.Fatalf("scan after Close: %v", err)
 		}
+	}
+}
+
+func TestScheduleDueAndNext(t *testing.T) {
+	at := func(s string) time.Time {
+		tm, err := time.ParseInLocation("2006-01-02 15:04", s, time.Local)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tm
+	}
+	on := Schedule{Enabled: true, Time: "03:00", Intensity: "low"}
+	for _, tc := range []struct {
+		name    string
+		s       Schedule
+		now     string
+		lastDay string
+		want    bool
+	}{
+		{"off", Schedule{Time: "03:00"}, "2026-10-05 03:00", "", false},
+		{"before the time", on, "2026-10-05 02:59", "", false},
+		{"at the time", on, "2026-10-05 03:00", "2026-10-04", true},
+		{"already ran today", on, "2026-10-05 03:20", "2026-10-05", false},
+		{"a little late", on, "2026-10-05 03:59", "2026-10-04", true},
+		// The server was off at 03:00. Starting at noon would put the load
+		// where the user chose not to have it.
+		{"too late to start", on, "2026-10-05 12:00", "2026-10-04", false},
+		{"unreadable time", Schedule{Enabled: true, Time: "soon"}, "2026-10-05 03:00", "", false},
+	} {
+		if got := tc.s.due(at(tc.now), tc.lastDay); got != tc.want {
+			t.Errorf("%s: due = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+	if next := on.next(at("2026-10-05 02:00")); next == nil || !next.Equal(at("2026-10-05 03:00")) {
+		t.Errorf("next before the time = %v", next)
+	}
+	if next := on.next(at("2026-10-05 03:00")); next == nil || !next.Equal(at("2026-10-06 03:00")) {
+		t.Errorf("next after the time = %v", next)
+	}
+	if next := (Schedule{Time: "03:00"}).next(at("2026-10-05 02:00")); next != nil {
+		t.Errorf("a schedule that is off has a next run: %v", next)
+	}
+}
+
+// A scan run from the command line builds its index in another process. The
+// running server must pick it up without a restart.
+func TestServerAdoptsAnIndexBuiltElsewhere(t *testing.T) {
+	server := newEnv(t, false, map[string]string{"share/a.txt": "a"})
+	if server.app.IndexID() != "" {
+		t.Fatal("a new installation must not have an index: nothing scans by itself")
+	}
+	cli := openEnv(t, server.root, server.app.Config().DataDir, false)
+	cli.scan()
+
+	server.app.adoptLatest()
+	if server.app.IndexID() != cli.app.IndexID() || server.app.IndexID() == "" {
+		t.Fatalf("server index %q, command-line index %q", server.app.IndexID(), cli.app.IndexID())
+	}
+	if got := server.id("share/a.txt"); got == 0 {
+		t.Error("the adopted index cannot be queried")
+	}
+	// A second look changes nothing.
+	before := server.app.IndexID()
+	server.app.adoptLatest()
+	if server.app.IndexID() != before {
+		t.Error("adopting twice switched indexes")
+	}
+}
+
+func TestStopScan(t *testing.T) {
+	files := make(map[string]string)
+	for d := range 60 {
+		for f := range 60 {
+			files[filepath.Join("share", "d"+strconv.Itoa(d), "f"+strconv.Itoa(f))] = "x"
+		}
+	}
+	e := newEnv(t, false, files)
+	if err := e.app.StopScan(); !errors.Is(err, ErrNoScan) {
+		t.Errorf("stopping when nothing runs: %v", err)
+	}
+	if err := e.app.StartScan(scan.Aggressive); err != nil {
+		t.Fatal(err)
+	}
+	stopped := false
+	for range 2000 {
+		if err := e.app.StopScan(); err == nil {
+			stopped = true
+			break
+		}
+		if e.app.IndexID() != "" {
+			break // it finished before it could be stopped; nothing to check
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+	for range 500 {
+		if !e.app.ScanStatus().Running {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	st := e.app.ScanStatus()
+	if st.Running {
+		t.Fatal("the scan is still running after it was stopped")
+	}
+	if stopped && st.Index == nil && !strings.Contains(st.LastError, "stopped") {
+		t.Errorf("a stopped scan should say so: %q", st.LastError)
+	}
+	if left, _ := filepath.Glob(filepath.Join(e.app.Config().DataDir, "index", "*.tmp*")); len(left) != 0 {
+		t.Errorf("a stopped scan left its unfinished index behind: %v", left)
+	}
+}
+
+// Entry IDs belong to one index. An operation that names another is refused.
+func TestOperationsAreTiedToTheirIndex(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, false, map[string]string{"share/a.txt": "a", "share/b.txt": "bb"})
+	e.scan()
+	old, id := e.app.IndexID(), e.id("share/a.txt")
+	e.scan()
+	if e.app.IndexID() == old {
+		t.Fatal("two scans produced the same index ID")
+	}
+	stale := AtIndex(ctx, old)
+	if _, err := e.app.PutAnnotation(stale, id, AnnotationInput{Note: "n"}); !errors.Is(err, ErrIndexChanged) {
+		t.Errorf("put against a replaced index: %v", err)
+	}
+	if err := e.app.DeleteAnnotation(stale, id); !errors.Is(err, ErrIndexChanged) {
+		t.Errorf("delete against a replaced index: %v", err)
+	}
+	if _, _, err := e.app.OpenContent(stale, id); !errors.Is(err, ErrIndexChanged) {
+		t.Errorf("content against a replaced index: %v", err)
+	}
+	if _, err := e.app.PutAnnotation(AtIndex(ctx, e.app.IndexID()), e.id("share/a.txt"), AnnotationInput{Note: "n"}); err != nil {
+		t.Errorf("put against the current index: %v", err)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,6 +29,11 @@ var (
 	ErrGone        = errors.New("the item is no longer where the last scan found it; scan again")
 	ErrNotFile     = errors.New("only regular files have contents to show")
 	ErrClosed      = errors.New("the application is shutting down")
+	ErrNoScan      = errors.New("no scan is running")
+	// ErrIndexChanged means the caller's entry IDs came from an index that
+	// has since been replaced. IDs are reassigned by every scan, so acting
+	// on a stale one could touch a different item.
+	ErrIndexChanged = errors.New("a scan has finished since this was loaded; reload and try again")
 )
 
 // InputError reports a request the user can correct.
@@ -59,6 +65,7 @@ type App struct {
 	closed    bool
 	scans     sync.WaitGroup // scans in progress; Close waits for them
 	scanning  bool
+	stopScan  context.CancelFunc // ends the scan in progress
 	intensity scan.Intensity
 	progress  *scan.Progress
 	started   time.Time
@@ -115,6 +122,9 @@ func New(bg context.Context, cfg Config, db *sql.DB) (*App, error) {
 		// cannot reach. Start without one; the first scan replaces it.
 		if sameRoots(ix.Info.Roots, cfg.Roots) {
 			a.ix = ix
+			// Annotation files are the source of truth and may have been
+			// edited while the server was down.
+			a.warnings = a.reconcile(context.WithoutCancel(bg), ix)
 		} else {
 			ix.Close()
 		}
@@ -161,6 +171,70 @@ func (a *App) View(fn func(ix *index.Index) error) error {
 	return fn(a.ix)
 }
 
+type indexKey struct{}
+
+// AtIndex records, on a request's context, which index the caller's entry IDs
+// came from. Operations that act on an entry ID then refuse to run against
+// any other index.
+func AtIndex(ctx context.Context, id string) context.Context {
+	if id == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, indexKey{}, id)
+}
+
+// viewAt is View for operations that take an entry ID from a client. The
+// check is made while the index is held, so a scan cannot finish between the
+// check and the work.
+func (a *App) viewAt(ctx context.Context, fn func(ix *index.Index) error) error {
+	return a.View(func(ix *index.Index) error {
+		if want, _ := ctx.Value(indexKey{}).(string); want != "" && want != ix.ID() {
+			return ErrIndexChanged
+		}
+		return fn(ix)
+	})
+}
+
+// IndexID names the index in use, or "" when there is none.
+func (a *App) IndexID() string {
+	a.ixMu.RLock()
+	defer a.ixMu.RUnlock()
+	if a.ix == nil {
+		return ""
+	}
+	return a.ix.ID()
+}
+
+// adoptLatest switches to the newest index on disk if it is not the one in
+// use, which is how a scan run from the command line reaches a running server.
+func (a *App) adoptLatest() {
+	path := index.Latest(a.indexDir())
+	a.ixMu.RLock()
+	current := ""
+	if a.ix != nil {
+		current = a.ix.Path
+	}
+	a.ixMu.RUnlock()
+	if path == "" || path <= current { // names sort by scan time
+		return
+	}
+	ix, err := index.Open(path)
+	if err != nil {
+		return
+	}
+	if !sameRoots(ix.Info.Roots, a.cfg.Roots) {
+		ix.Close()
+		return
+	}
+	a.ixMu.Lock()
+	old := a.ix
+	a.ix = ix
+	a.ixMu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+}
+
 func (a *App) store(sharePath string) *meta.Store {
 	a.storesMu.Lock()
 	defer a.storesMu.Unlock()
@@ -190,11 +264,20 @@ type ScanStatus struct {
 	LastError string      `json:"last_error,omitempty"`
 	Warnings  []string    `json:"warnings,omitempty"`
 	Index     *index.Info `json:"index,omitempty"`
+	// LastChoice is the intensity of the last scan started by hand, for the
+	// scan dialog to preselect. Empty until there has been one.
+	LastChoice string `json:"last_choice"`
+	// Schedule and NextScheduled describe the optional daily scan.
+	Schedule      Schedule   `json:"schedule"`
+	NextScheduled *time.Time `json:"next_scheduled,omitempty"`
+	// History lists recent scans, newest first, so a client can say how
+	// long each intensity really takes on this pool.
+	History []ScanRecord `json:"history"`
 }
 
 func (a *App) ScanStatus() ScanStatus {
 	a.scanMu.Lock()
-	st := ScanStatus{Running: a.scanning, LastError: a.lastErr, Warnings: a.warnings}
+	st := ScanStatus{Running: a.scanning, LastError: a.lastErr, Warnings: a.warnings, History: []ScanRecord{}}
 	if a.scanning {
 		started := a.started
 		st.Started = &started
@@ -213,10 +296,18 @@ func (a *App) ScanStatus() ScanStatus {
 		st.Index = &info
 		return nil
 	})
+	st.LastChoice = a.setting(keyLastChoice)
+	if settings, err := a.Settings(); err == nil {
+		st.Schedule = settings.Schedule
+		st.NextScheduled = settings.Schedule.next(time.Now())
+	}
+	if history, err := a.scanHistory(10); err == nil {
+		st.History = history
+	}
 	return st
 }
 
-// StartScan begins a scan in the background.
+// StartScan begins a scan in the background, as asked for by the user.
 func (a *App) StartScan(intensity scan.Intensity) error {
 	a.scanMu.Lock()
 	if a.scanning {
@@ -224,13 +315,30 @@ func (a *App) StartScan(intensity scan.Intensity) error {
 		return ErrScanRunning
 	}
 	a.scanMu.Unlock()
+	a.setSetting(keyLastChoice, intensity.String())
 	go a.Scan(a.bg, intensity)
+	return nil
+}
+
+// StopScan ends the scan in progress. Its unfinished index is discarded and
+// the previous one stays in use.
+func (a *App) StopScan() error {
+	a.scanMu.Lock()
+	defer a.scanMu.Unlock()
+	if !a.scanning || a.stopScan == nil {
+		return ErrNoScan
+	}
+	a.stopScan()
 	return nil
 }
 
 // Scan walks every root, builds a new index and switches to it. The
 // intensity sets how hard the walk leans on the disks.
 func (a *App) Scan(ctx context.Context, intensity scan.Intensity) (index.Info, error) {
+	return a.scanAs(ctx, intensity, "manual")
+}
+
+func (a *App) scanAs(ctx context.Context, intensity scan.Intensity, trigger string) (index.Info, error) {
 	a.scanMu.Lock()
 	if a.closed {
 		a.scanMu.Unlock()
@@ -240,29 +348,45 @@ func (a *App) Scan(ctx context.Context, intensity scan.Intensity) (index.Info, e
 		a.scanMu.Unlock()
 		return index.Info{}, ErrScanRunning
 	}
-	prog := &scan.Progress{}
-	a.scanning, a.intensity, a.progress, a.started, a.expected, a.lastErr = true, intensity, prog, time.Now(), 0, ""
-	a.scans.Add(1)
-	a.scanMu.Unlock()
-	defer a.scans.Done()
-
-	// The scan ends when its caller gives up or when the app is closed,
-	// whichever comes first.
+	// The scan ends when its caller gives up, when it is stopped, or when
+	// the app is closed, whichever comes first.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer context.AfterFunc(a.bg, cancel)()
 
+	prog, started := &scan.Progress{}, time.Now()
+	a.scanning, a.stopScan, a.intensity, a.progress, a.started, a.expected, a.lastErr = true, cancel, intensity, prog, started, 0, ""
+	a.scans.Add(1)
+	a.scanMu.Unlock()
+	defer a.scans.Done()
+
+	log.Printf("scan started (%s, %s intensity)", trigger, intensity)
 	info, warnings, err := a.scanOnce(ctx, prog, intensity)
+	took := time.Since(started)
 
 	a.scanMu.Lock()
-	a.scanning = false
-	if err != nil {
+	a.scanning, a.stopScan = false, nil
+	switch {
+	case errors.Is(err, context.Canceled):
+		a.lastErr = "the scan was stopped before it finished"
+	case err != nil:
 		a.lastErr = err.Error()
-	} else {
+	default:
 		a.warnings = warnings
 	}
 	a.scanMu.Unlock()
-	return info, err
+
+	if err != nil {
+		log.Printf("scan did not finish: %v", err)
+		return info, err
+	}
+	log.Printf("scan finished in %s: %d files, %d folders, %d errors", took.Round(time.Millisecond), info.Files, info.Dirs, info.Errors)
+	for _, w := range warnings {
+		log.Printf("warning: %s", w)
+	}
+	a.recordScan(ScanRecord{IndexID: info.ID, Started: started, Intensity: intensity.String(), Trigger: trigger,
+		Seconds: took.Seconds(), Entries: info.Files + info.Dirs, Errors: info.Errors})
+	return info, nil
 }
 
 func (a *App) scanOnce(ctx context.Context, prog *scan.Progress, intensity scan.Intensity) (index.Info, []string, error) {
@@ -348,7 +472,10 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress, intensity scan.
 	if err != nil {
 		return index.Info{}, nil, err
 	}
-	warnings := a.reconcile(ctx, ix)
+	// The index is already published, so the annotations must be matched to
+	// it even if the server is shutting down: an index left without them
+	// would show everything as unannotated after the next start.
+	warnings := a.reconcile(context.WithoutCancel(ctx), ix)
 
 	a.ixMu.Lock()
 	old := a.ix
@@ -358,7 +485,7 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress, intensity scan.
 		old.Close()
 	}
 	index.Prune(a.indexDir(), a.cfg.KeepIndexes)
-	return info, warnings, nil
+	return ix.Info, warnings, nil
 }
 
 // scannedFSTypes decides which kinds of filesystem a scan walks into.

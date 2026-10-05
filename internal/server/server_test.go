@@ -26,6 +26,7 @@ type harness struct {
 	url    string
 	client *http.Client
 	csrf   string
+	index  string // the index the server last said it was using, sent back as a real client would
 	code   string
 	root   string
 	app    *core.App
@@ -97,6 +98,9 @@ func (h *harness) request(method, path string, body any, header map[string]strin
 	if h.csrf != "" {
 		req.Header.Set("X-CSRF-Token", h.csrf)
 	}
+	if h.index != "" {
+		req.Header.Set("X-RP-Index", h.index)
+	}
 	for k, v := range header {
 		if v == "" {
 			req.Header.Del(k)
@@ -110,6 +114,9 @@ func (h *harness) request(method, path string, body any, header map[string]strin
 	}
 	defer res.Body.Close()
 	out := response{status: res.StatusCode, header: res.Header}
+	if v := res.Header.Get("X-RP-Index"); v != "" {
+		h.index = v
+	}
 	out.raw, _ = io.ReadAll(res.Body)
 	json.Unmarshal(out.raw, &out.body)
 	return out
@@ -312,6 +319,126 @@ func TestBrowseAnnotateAndReview(t *testing.T) {
 	r = h.expect(200, h.request("GET", "/api/storage", nil, nil))
 	if len(r.body["datasets"].([]any)) == 0 || r.body["zfs_origin"] == nil {
 		t.Errorf("storage = %s", r.raw)
+	}
+}
+
+// Entry IDs are reassigned by every scan. A client still holding IDs from the
+// previous index must be refused, not allowed to act on whatever item now
+// has that number.
+func TestStaleEntryIDsAreRefused(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	h.signIn()
+	first := h.index
+	id := h.id("big.mkv")
+	if first == "" {
+		t.Fatal("responses do not name the index in use")
+	}
+
+	// A second scan replaces the index while the client still holds the ID.
+	h.expect(202, h.request("POST", "/api/scan", nil, nil))
+	for range 300 {
+		h.request("GET", "/api/scan", nil, nil)
+		if h.index != first {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.index == first {
+		t.Fatal("the index ID did not change after a scan")
+	}
+	stale := map[string]string{"X-RP-Index": first}
+
+	r := h.expect(409, h.request("PUT", "/api/entries/"+id+"/annotation", map[string]any{"note": "for the old big.mkv"}, stale))
+	if r.body["code"] != "index_changed" {
+		t.Errorf("stale write: %s", r.raw)
+	}
+	for _, path := range []string{"/api/entries/" + id, "/api/entries/" + id + "/content", "/api/tree?id=" + id, "/api/entries?share=" + id} {
+		if r := h.request("GET", path, nil, stale); r.status != 409 || r.body["code"] != "index_changed" {
+			t.Errorf("stale read of %s: %d %s", path, r.status, r.raw)
+		}
+	}
+	h.expect(409, h.request("POST", "/api/queue", map[string]any{"filter": map[string]any{"kind": "file"}}, stale))
+	// A write that does not say which index it means is refused outright.
+	r = h.expect(400, h.request("PUT", "/api/entries/"+id+"/annotation", map[string]any{"note": "x"}, map[string]string{"X-RP-Index": ""}))
+	if r.body["code"] != "index_required" {
+		t.Errorf("write without an index: %s", r.raw)
+	}
+	if _, err := os.Stat(filepath.Join(h.root, "media/.reflection")); !os.IsNotExist(err) {
+		t.Fatal("a refused write still created annotation files")
+	}
+
+	// The client recovers by path, which outlives the scan, even while it
+	// still names the old index.
+	r = h.expect(200, h.request("GET", "/api/entries/lookup?path="+h.root+"/media/big.mkv", nil, stale))
+	found := r.body["entry"].(map[string]any)
+	if found["name"] != "big.mkv" {
+		t.Fatalf("lookup = %s", r.raw)
+	}
+	h.expect(404, h.request("GET", "/api/entries/lookup?path="+h.root+"/media/nope", nil, nil))
+	h.expect(200, h.request("PUT", "/api/entries/"+jsonNum(found["id"])+"/annotation", map[string]any{"note": "for big.mkv"}, nil))
+}
+
+func TestErrorCodesTotalsAndBlankSaves(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	if r := h.request("GET", "/api/tree", nil, nil); r.status != 401 || r.body["code"] != "not_signed_in" {
+		t.Errorf("signed out: %d %s", r.status, r.raw)
+	}
+	h.signIn()
+	for path, want := range map[string]string{"/api/entries/999999": "not_found", "/api/entries?sort=bogus": "bad_request", "/api/entries/lookup": "bad_request"} {
+		if r := h.request("GET", path, nil, nil); r.body["code"] != want {
+			t.Errorf("%s: code %v, want %s", path, r.body["code"], want)
+		}
+	}
+	if r := h.request("DELETE", "/api/scan", nil, nil); r.status != 409 || r.body["code"] != "no_scan" {
+		t.Errorf("stopping when nothing runs: %d %s", r.status, r.raw)
+	}
+
+	r := h.expect(200, h.request("GET", "/api/entries?kind=file&type=video&limit=1", nil, nil))
+	if len(r.body["items"].([]any)) != 1 || r.body["total"] != float64(2) || r.body["total_size"] != float64(5100) {
+		t.Errorf("totals must cover the whole filter, not the page: %s", r.raw)
+	}
+	r = h.expect(200, h.request("GET", "/api/entries?kind=dir", nil, nil))
+	if r.body["total"] != float64(3) || r.body["total_size"] != nil { // the root and its two shares
+		t.Errorf("folder sizes include their contents and must not be summed: %s", r.raw)
+	}
+
+	// Saving a blank form is how an item is skipped.
+	r = h.expect(200, h.request("PUT", "/api/entries/"+h.id("song.flac")+"/annotation", map[string]any{}, nil))
+	if r.body["annotation"].(map[string]any)["skipped"] != true {
+		t.Errorf("a blank save was not stored as a skip: %s", r.raw)
+	}
+	// An item that has left the disk can still be skipped, so it does not
+	// block the queue; it cannot be described.
+	gone := h.id("small.mkv")
+	os.Remove(filepath.Join(h.root, "media/small.mkv"))
+	if r := h.request("PUT", "/api/entries/"+gone+"/annotation", map[string]any{"note": "x"}, nil); r.status != 409 || r.body["code"] != "gone" {
+		t.Errorf("describing a missing item: %d %s", r.status, r.raw)
+	}
+	h.expect(200, h.request("PUT", "/api/entries/"+gone+"/annotation", map[string]any{}, nil))
+}
+
+func TestSettingsAndSchedule(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	h.signIn()
+
+	r := h.expect(200, h.request("GET", "/api/settings", nil, nil))
+	if sched := r.body["scan_schedule"].(map[string]any); sched["enabled"] != false {
+		t.Errorf("a schedule must be off until the user sets one: %s", r.raw)
+	}
+	st := h.expect(200, h.request("GET", "/api/scan", nil, nil))
+	if st.body["next_scheduled"] != nil || st.body["last_choice"] != "aggressive" || len(st.body["history"].([]any)) != 1 {
+		t.Errorf("status = %s", st.raw)
+	}
+	if rec := st.body["history"].([]any)[0].(map[string]any); rec["trigger"] != "manual" || rec["intensity"] != "aggressive" || rec["index_id"] != h.index {
+		t.Errorf("history = %v", rec)
+	}
+
+	h.expect(400, h.request("PUT", "/api/settings", map[string]any{"scan_schedule": map[string]any{"enabled": true, "time": "25:99", "intensity": "low"}}, nil))
+	h.expect(400, h.request("PUT", "/api/settings", map[string]any{"scan_schedule": map[string]any{"enabled": true, "time": "03:00", "intensity": "turbo"}}, nil))
+	h.expect(200, h.request("PUT", "/api/settings", map[string]any{"scan_schedule": map[string]any{"enabled": true, "time": "03:00", "intensity": "balanced"}}, nil))
+	st = h.expect(200, h.request("GET", "/api/scan", nil, nil))
+	if st.body["next_scheduled"] == nil || st.body["schedule"].(map[string]any)["intensity"] != "balanced" {
+		t.Errorf("status after enabling the schedule = %s", st.raw)
 	}
 }
 

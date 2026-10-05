@@ -1,5 +1,6 @@
 // Package appdb opens the database that holds state which must outlive any
-// one scan: the admin account, sessions and the prefix list.
+// one scan: the admin account, sessions, the prefix list, settings and the
+// record of past scans.
 package appdb
 
 import (
@@ -27,6 +28,20 @@ CREATE TABLE IF NOT EXISTS prefixes(
 	name TEXT PRIMARY KEY,
 	meaning TEXT NOT NULL,
 	position INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS settings(
+	key TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS scan_history(
+	id INTEGER PRIMARY KEY,
+	index_id TEXT NOT NULL,
+	started INTEGER NOT NULL,
+	intensity TEXT NOT NULL,
+	trigger TEXT NOT NULL, -- "manual" or "scheduled"
+	seconds REAL NOT NULL,
+	entries INTEGER NOT NULL,
+	errors INTEGER NOT NULL
 );
 `
 

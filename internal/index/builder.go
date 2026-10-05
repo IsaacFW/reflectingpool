@@ -63,6 +63,9 @@ const (
 
 // Info describes the scan an index was built from.
 type Info struct {
+	// ID names this index. Entry IDs mean nothing outside the index that
+	// issued them, so anything that holds one must also hold this.
+	ID         string    `json:"id"`
 	Started    time.Time `json:"started"`
 	Finished   time.Time `json:"finished"`
 	Roots      []string  `json:"roots"`
