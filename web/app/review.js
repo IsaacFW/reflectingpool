@@ -5,7 +5,7 @@ import { api, ApiError, indexId, session, superseded } from './api.js';
 import { BLANK, bodyOf, Fields, formFrom, isBlank, loadPrefixes, prefixList, sameForm } from './annotate.js';
 import { ago, bytes, count, plural } from './format.js';
 import { Preview } from './inspector.js';
-import { html, useEffect, useRef, useState } from './lib.js';
+import { html, useEffect, useLayoutEffect, useRef, useState } from './lib.js';
 import { DEFAULT, defFromParams, GROUP_KEYS, groupLabel, lastParams, ORDERS, paramsFromDef, PRESETS, rememberParams, resolve, sentence } from './queue.js';
 import { go, href, route, say } from './state.js';
 
@@ -52,6 +52,33 @@ function parentPath(/** @type {string} */ path) {
   return cut <= 0 ? '' : path.slice(0, cut);
 }
 
+// The keys of the review: one listener for the life of the page, acting on
+// whichever item's form is on screen.
+/** @type {{owner: object, form: Form, touched: boolean, display: {current: HTMLInputElement | null},
+ *   props: {paused: boolean, canBack: boolean, onSubmit: (f: Form, touched: boolean) => void, onBack: () => void, onClimb: () => void, onDescend: () => void}} | null} */
+let onScreen = null;
+window.addEventListener('keydown', (e) => {
+  const c = onScreen;
+  if (!c || c.props.paused || document.querySelector('dialog[open]')) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (e.key === 'Enter' && mod) {
+    c.props.onSubmit(c.form, c.touched);
+  } else if ((e.key === 'z' || e.key === 'Z') && mod && !e.shiftKey && !c.touched && c.props.canBack) {
+    // With something typed, Ctrl+Z is the browser's own undo. Once there
+    // is nothing left to undo, it goes back an item.
+    c.props.onBack();
+  } else if (e.key === 'ArrowUp' && e.altKey) {
+    c.props.onClimb();
+  } else if (e.key === 'ArrowDown' && e.altKey) {
+    c.props.onDescend();
+  } else if (e.key === 'F2') {
+    if (c.display.current) c.display.current.focus();
+  } else {
+    return;
+  }
+  e.preventDefault();
+}, true);
+
 /**
  * The form for one item. It owns what is typed and the keys of the review.
  * A different item is a different form, so nothing typed can leak across.
@@ -65,40 +92,23 @@ function ItemForm(props) {
   const note = useRef(/** @type {HTMLTextAreaElement | null} */ (null));
   const display = useRef(/** @type {HTMLInputElement | null} */ (null));
   const touched = !sameForm(form, props.initial);
-  // The key handler is attached once and reads what is current from here.
-  const now = useRef({ form, touched, props });
-  now.current = { form, touched, props };
+  // The page's one key listener reads the form on screen from here. It is
+  // set while drawing, not afterwards, so there is no moment after an item
+  // appears in which a key would go nowhere.
+  const me = useRef({});
+  onScreen = { owner: me.current, form, touched, props, display };
 
   const change = (/** @type {Form} */ f) => {
     setForm(f);
     props.onChange(f);
   };
 
-  useEffect(() => {
+  // The cursor is in the note before the item is painted.
+  useLayoutEffect(() => {
     if (note.current) note.current.focus();
-    const onKey = (/** @type {KeyboardEvent} */ e) => {
-      const c = now.current;
-      if (c.props.paused || document.querySelector('dialog[open]')) return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (e.key === 'Enter' && mod) {
-        c.props.onSubmit(c.form, c.touched);
-      } else if ((e.key === 'z' || e.key === 'Z') && mod && !e.shiftKey && !c.touched && c.props.canBack) {
-        // With something typed, Ctrl+Z is the browser's own undo. Once
-        // there is nothing left to undo, it goes back an item.
-        c.props.onBack();
-      } else if (e.key === 'ArrowUp' && e.altKey) {
-        c.props.onClimb();
-      } else if (e.key === 'ArrowDown' && e.altKey) {
-        c.props.onDescend();
-      } else if (e.key === 'F2') {
-        if (display.current) display.current.focus();
-      } else {
-        return;
-      }
-      e.preventDefault();
+    return () => {
+      if (onScreen && onScreen.owner === me.current) onScreen = null;
     };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   // Up in an empty note brings back what was last saved; again for older.
