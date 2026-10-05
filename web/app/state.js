@@ -4,7 +4,7 @@ import { signal } from './lib.js';
 
 /** The screens. Those without `built` show a note about what will be there. */
 export const SCREENS = [
-  { id: 'overview', label: 'Overview' },
+  { id: 'overview', label: 'Overview', built: true },
   { id: 'space', label: 'Space', built: true },
   { id: 'find', label: 'Find', built: true },
   { id: 'review', label: 'Review', built: true },
@@ -55,7 +55,7 @@ export function applyTheme() {
 
 /** @returns {Route} */
 function readLocation() {
-  const screen = location.pathname.replace(/^\/+/, '').split('/')[0] || 'space';
+  const screen = location.pathname.replace(/^\/+/, '').split('/')[0] || 'overview';
   /** @type {Record<string, string>} */
   const params = {};
   new URLSearchParams(location.search).forEach((v, k) => { params[k] = v; });
