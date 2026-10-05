@@ -81,7 +81,7 @@ Agreed scope as of 2026-10-04. A change to this document is a change to scope.
 - Progress is a true percentage, from the per-dataset file count ZFS reports.
 - Excluded by default: `.zfs` directories and Docker's per-layer datasets.
 - A benchmark and diagnostics command.
-- Scan intensity: before starting a scan by hand, the user chooses aggressive, balanced or low impact. What the modes do, and the default for scheduled scans, are tracked in [issue #6](https://github.com/IsaacFW/reflectingpool/issues/6).
+- Scan intensity: before starting a scan by hand, the user chooses aggressive, balanced or low impact. Scheduled scans run at low impact unless configured otherwise; the first scan is aggressive. The gentler modes use fewer walkers at lower priority and rest between reads in proportion to how long the reads took, so they back off when the disks are busy. Their effect on a real pool is still to be measured ([issue #6](https://github.com/IsaacFW/reflectingpool/issues/6)).
 
 ### 8. Security
 

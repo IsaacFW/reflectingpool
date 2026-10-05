@@ -52,13 +52,14 @@ type App struct {
 	ixMu sync.RWMutex
 	ix   *index.Index
 
-	scanMu   sync.Mutex
-	scanning bool
-	progress *scan.Progress
-	started  time.Time
-	expected int64
-	lastErr  string
-	warnings []string
+	scanMu    sync.Mutex
+	scanning  bool
+	intensity scan.Intensity
+	progress  *scan.Progress
+	started   time.Time
+	expected  int64
+	lastErr   string
+	warnings  []string
 
 	storesMu sync.Mutex
 	stores   map[string]*meta.Store
@@ -160,7 +161,12 @@ func (a *App) store(sharePath string) *meta.Store {
 type ScanStatus struct {
 	Running bool       `json:"running"`
 	Started *time.Time `json:"started,omitempty"`
-	Entries int64      `json:"entries"`
+	// Intensity is "aggressive", "balanced" or "low" while a scan runs.
+	Intensity string `json:"intensity,omitempty"`
+	// RestedSeconds is how long the running scan's walkers have paused to
+	// leave the disks to other work.
+	RestedSeconds float64 `json:"rested_seconds"`
+	Entries       int64   `json:"entries"`
 	// Expected is the filesystems' own count of files and directories, or 0
 	// when they do not report one; Percent is only meaningful when it is set.
 	Expected  int64       `json:"expected"`
@@ -177,6 +183,8 @@ func (a *App) ScanStatus() ScanStatus {
 	if a.scanning {
 		started := a.started
 		st.Started = &started
+		st.Intensity = a.intensity.String()
+		st.RestedSeconds = time.Duration(a.progress.Rested.Load()).Seconds()
 		st.Entries = a.progress.Entries.Load()
 		st.Errors = a.progress.Errors.Load()
 		st.Expected = a.expected
@@ -194,29 +202,30 @@ func (a *App) ScanStatus() ScanStatus {
 }
 
 // StartScan begins a scan in the background.
-func (a *App) StartScan() error {
+func (a *App) StartScan(intensity scan.Intensity) error {
 	a.scanMu.Lock()
 	if a.scanning {
 		a.scanMu.Unlock()
 		return ErrScanRunning
 	}
 	a.scanMu.Unlock()
-	go a.Scan(a.bg)
+	go a.Scan(a.bg, intensity)
 	return nil
 }
 
-// Scan walks every root, builds a new index and switches to it.
-func (a *App) Scan(ctx context.Context) (index.Info, error) {
+// Scan walks every root, builds a new index and switches to it. The
+// intensity sets how hard the walk leans on the disks.
+func (a *App) Scan(ctx context.Context, intensity scan.Intensity) (index.Info, error) {
 	a.scanMu.Lock()
 	if a.scanning {
 		a.scanMu.Unlock()
 		return index.Info{}, ErrScanRunning
 	}
 	prog := &scan.Progress{}
-	a.scanning, a.progress, a.started, a.expected, a.lastErr = true, prog, time.Now(), 0, ""
+	a.scanning, a.intensity, a.progress, a.started, a.expected, a.lastErr = true, intensity, prog, time.Now(), 0, ""
 	a.scanMu.Unlock()
 
-	info, warnings, err := a.scanOnce(ctx, prog)
+	info, warnings, err := a.scanOnce(ctx, prog, intensity)
 
 	a.scanMu.Lock()
 	a.scanning = false
@@ -229,7 +238,7 @@ func (a *App) Scan(ctx context.Context) (index.Info, error) {
 	return info, err
 }
 
-func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []string, error) {
+func (a *App) scanOnce(ctx context.Context, prog *scan.Progress, intensity scan.Intensity) (index.Info, []string, error) {
 	started := time.Now()
 	var table *storage.Table
 	if mounts, err := storage.Mounts(); err == nil {
@@ -279,8 +288,9 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 		return index.Info{}, nil, err
 	}
 	res, err := scan.Walk(ctx, scan.Options{
-		Roots:   a.cfg.Roots,
-		Workers: a.cfg.Workers,
+		Roots:     a.cfg.Roots,
+		Workers:   a.cfg.Workers,
+		Intensity: intensity,
 		// The data directory often lives on the pool being scanned; indexing
 		// our own index would only add noise.
 		Exclude:       append(slices.Clone(a.cfg.Exclude), a.cfg.DataDir),
@@ -301,7 +311,7 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 	info := index.Info{
 		Started: started, Finished: time.Now(), Roots: a.cfg.Roots,
 		Files: res.Files, Dirs: res.Dirs, Size: res.Size, Disk: res.Disk,
-		Hardlinked: res.Hardlinked, Errors: res.Errors,
+		Hardlinked: res.Hardlinked, Errors: res.Errors, Intensity: intensity.String(),
 	}
 	path, err := b.Finish(info, datasets)
 	if err != nil {
