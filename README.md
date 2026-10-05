@@ -36,6 +36,21 @@ docker run -d --name reflectingpool \
   ghcr.io/isaacfw/reflectingpool:latest
 ```
 
+### Only some shares
+
+To give the container one share instead of the whole pool, map the share into a folder of its own and point `RP_ROOTS` at that folder:
+
+| Setting | Value |
+|---|---|
+| Path | `/mnt/tank/media` to `/pool/media`, access mode **Read/Write - Slave** |
+| Variable | `RP_ROOTS=/pool` |
+
+Every folder mapped into `/pool` is scanned as a share. Annotations record paths relative to their share, so they stay valid if you later map the whole pool instead.
+
+Map from `/mnt/<pool>/...`, not `/mnt/user/...`: the user-share layer hides which dataset a file is on and is slower to walk.
+
+### First start
+
 On first start the container log shows two things you need:
 
 - **A setup code.** Creating the admin account requires it, so nobody else on the network can claim the server first.

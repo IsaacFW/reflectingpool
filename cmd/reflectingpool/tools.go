@@ -259,36 +259,61 @@ func cmdDoctor() error {
 			note("%s: no mount found", root)
 			continue
 		}
-		children := table.Under(root)
-		ok("%s is %s %q with %d filesystem(s) at or beneath it", root, m.FSType, m.Source, len(children))
+		// A root is either a mapped filesystem itself (a whole pool), or a
+		// folder of the container holding one mapping per share.
+		type mapping struct {
+			path string
+			m    storage.Mount
+		}
+		mapped := []mapping{{root, m}}
 		if m.MountPoint != root {
-			note("%s is a folder inside %s rather than a mount of its own; scan progress cannot be shown as a percentage", root, m.MountPoint)
+			var inside []mapping
+			for _, c := range table.Under(root) {
+				if filepath.Dir(c.MountPoint) == root {
+					inside = append(inside, mapping{c.MountPoint, c})
+				}
+			}
+			if len(inside) > 0 {
+				ok("%s holds %d mapped folder(s); each is scanned as a share", root, len(inside))
+				mapped = inside
+			} else {
+				note("%s is a folder inside %s %q with nothing mapped into it; the folders it contains are scanned as shares", root, m.FSType, m.Source)
+			}
 		}
-		if u, err := storage.StatUsage(root); err == nil {
-			ok("%s: %s used, %s free, %d files and folders by the filesystem's count", root, human(u.Used), human(u.Avail), u.Objects)
+		scanned := make(map[uint64]storage.Mount)
+		for _, c := range table.Under(root) {
+			scanned[c.Dev] = c
 		}
-		if hasOption(m.Options, "ro") {
-			note("%s is mounted read-only: browsing works, annotations and quarantine do not", root)
-		} else if unix.Access(root, unix.W_OK) != nil {
-			note("%s is not writable by this process: annotations cannot be saved", root)
-		} else {
-			ok("%s is writable, so annotations can be saved", root)
-		}
-		if !strings.Contains(m.Propagation, "master:") && !strings.Contains(m.Propagation, "shared:") {
-			note("%s does not receive new mounts from the host. Datasets created or mounted after the container starts stay invisible until it restarts; set the path's access mode to \"Read/Write - Slave\" to fix that.", root)
-		} else {
-			ok("%s receives new mounts from the host (%s)", root, m.Propagation)
+		for _, t := range mapped {
+			scanned[t.m.Dev] = t.m
+			ok("%s is %s %q", t.path, t.m.FSType, t.m.Source)
+			if u, err := storage.StatUsage(t.path); err == nil {
+				ok("%s: %s used, %s free, %d files and folders by the filesystem's count", t.path, human(u.Used), human(u.Avail), u.Objects)
+			}
+			if hasOption(t.m.Options, "ro") {
+				note("%s is mounted read-only: browsing works, annotations and quarantine do not", t.path)
+			} else if unix.Access(t.path, unix.W_OK) != nil {
+				note("%s is not writable by this process: annotations cannot be saved", t.path)
+			} else {
+				ok("%s is writable, so annotations can be saved", t.path)
+			}
+			if !strings.Contains(t.m.Propagation, "master:") && !strings.Contains(t.m.Propagation, "shared:") {
+				note("%s does not receive new mounts from the host. Datasets created or mounted after the container starts stay invisible until it restarts; set the path's access mode to \"Read/Write - Slave\" to fix that.", t.path)
+			} else {
+				ok("%s receives new mounts from the host (%s)", t.path, t.m.Propagation)
+			}
 		}
 		noatime := 0
-		for _, c := range children {
+		for _, c := range scanned {
 			if hasOption(c.Options, "noatime") {
 				noatime++
 			}
 		}
-		if noatime == len(children) {
-			note("read times are off (noatime) on every filesystem here: staleness can only use modified and creation times")
+		ok("%d filesystem(s) in all will be scanned under %s", len(scanned), root)
+		if noatime == len(scanned) {
+			note("read times are off (noatime) on all of them: staleness can only use modified and creation times")
 		} else if noatime > 0 {
-			note("read times are off (noatime) on %d of %d filesystems here", noatime, len(children))
+			note("read times are off (noatime) on %d of them", noatime)
 		}
 	}
 

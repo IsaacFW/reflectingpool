@@ -224,8 +224,9 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 	}
 
 	var datasets []index.Dataset
-	rootFS := make(map[string]bool)
+	var scanned map[string]bool
 	if table != nil {
+		scanned = scannedFSTypes(table, a.cfg.Roots)
 		seen := make(map[uint64]bool)
 		var expected int64
 		add := func(m storage.Mount, counts bool) {
@@ -243,10 +244,10 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 		known := true
 		for _, root := range a.cfg.Roots {
 			if m, ok := table.Containing(root); ok {
-				rootFS[m.FSType] = true
 				// A root that is only part of a filesystem says nothing
-				// about how many files the scan will find.
-				known = known && m.MountPoint == root
+				// about how many files the scan will find, unless it is
+				// a folder of the container that only holds mappings.
+				known = known && (m.MountPoint == root || m.MountPoint == "/")
 				add(m, m.MountPoint == root)
 			}
 			for _, m := range table.Under(root) {
@@ -272,14 +273,12 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 		Exclude:       append(slices.Clone(a.cfg.Exclude), a.cfg.DataDir),
 		ShareMetaDirs: []string{meta.Dir},
 		Progress:      prog,
-		// Follow the pool into its child datasets, but not into unrelated
-		// filesystems that happen to be mounted inside it.
 		CrossMount: func(dev uint64) bool {
 			if table == nil {
 				return true
 			}
 			m, ok := table.ByDev(dev)
-			return !ok || rootFS[m.FSType]
+			return !ok || scanned[m.FSType]
 		},
 	}, b)
 	if err != nil {
@@ -310,6 +309,34 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 	}
 	index.Prune(a.indexDir(), a.cfg.KeepIndexes)
 	return info, warnings, nil
+}
+
+// scannedFSTypes decides which kinds of filesystem a scan walks into.
+//
+// A pool mapped at its own path is a filesystem, and the scan follows it into
+// child filesystems of the same kind (its datasets) while leaving anything
+// else that happens to be mounted inside it alone. A root can instead be a
+// plain folder that only exists to hold mappings, such as /pool with a share
+// mapped at /pool/media; then whatever is mapped directly into it is what the
+// user asked to scan, whatever kind it is.
+func scannedFSTypes(table *storage.Table, roots []string) map[string]bool {
+	kinds := make(map[string]bool)
+	for _, root := range roots {
+		m, ok := table.Containing(root)
+		if !ok {
+			continue
+		}
+		kinds[m.FSType] = true
+		if m.MountPoint == root {
+			continue
+		}
+		for _, child := range table.Under(root) {
+			if filepath.Dir(child.MountPoint) == root {
+				kinds[child.FSType] = true
+			}
+		}
+	}
+	return kinds
 }
 
 // DatasetReport is one filesystem under the scan roots, with ZFS's own
@@ -379,10 +406,13 @@ func (a *App) Storage(ctx context.Context) (StorageReport, error) {
 		rep.Datasets = append(rep.Datasets, d)
 	}
 	for _, root := range a.cfg.Roots {
-		if m, ok := table.Containing(root); ok {
+		under := table.Under(root)
+		// The filesystem a root sits on is only of interest when the root
+		// is that filesystem, or when nothing is mapped into the root.
+		if m, ok := table.Containing(root); ok && (m.MountPoint == root || len(under) == 0) {
 			add(m)
 		}
-		for _, m := range table.Under(root) {
+		for _, m := range under {
 			add(m)
 		}
 	}

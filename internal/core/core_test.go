@@ -12,6 +12,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/appdb"
 	"github.com/IsaacFW/reflectingpool/internal/index"
 	"github.com/IsaacFW/reflectingpool/internal/meta"
+	"github.com/IsaacFW/reflectingpool/internal/storage"
 )
 
 type env struct {
@@ -397,6 +398,45 @@ func TestOpenContentCannotEscapeTheRoot(t *testing.T) {
 	os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(e.root, "share/plain.txt"))
 	if _, _, err := e.app.OpenContent(ctx, id); err == nil {
 		t.Fatal("followed a symlink that replaced the file")
+	}
+}
+
+func TestScannedFSTypes(t *testing.T) {
+	const mountinfo = `1 0 0:30 / / rw - overlay overlay rw
+2 1 0:5 / /proc rw - proc proc rw
+3 1 0:40 / /pool/fleetdevices rw master:1 - zfs tank/fleetdevices rw
+4 3 0:41 / /pool/fleetdevices/archive rw master:2 - zfs tank/fleetdevices/archive rw
+5 1 0:50 / /mnt/tank rw master:3 - zfs tank rw
+6 5 0:51 / /mnt/tank/media rw master:4 - zfs tank/media rw
+7 5 0:60 / /mnt/tank/remote rw - nfs4 nas:/export rw
+8 1 0:70 / /data rw - xfs /dev/sdb1 rw
+`
+	mounts, err := storage.ParseMountinfo(strings.NewReader(mountinfo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	table := storage.NewTable(mounts)
+	for _, tc := range []struct {
+		name  string
+		roots []string
+		want  map[string]bool
+	}{
+		// One share mapped into a folder the container made: the share and
+		// its child datasets are scanned although the folder is not ZFS.
+		{"share mapped into a folder", []string{"/pool"}, map[string]bool{"overlay": true, "zfs": true}},
+		// A whole pool: its datasets are followed, the NFS mount inside is not.
+		{"whole pool", []string{"/mnt/tank"}, map[string]bool{"zfs": true}},
+		{"both", []string{"/pool", "/mnt/tank"}, map[string]bool{"overlay": true, "zfs": true}},
+	} {
+		got := scannedFSTypes(table, tc.roots)
+		if len(got) != len(tc.want) {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+		for kind := range tc.want {
+			if !got[kind] {
+				t.Errorf("%s: %s not scanned", tc.name, kind)
+			}
+		}
 	}
 }
 
