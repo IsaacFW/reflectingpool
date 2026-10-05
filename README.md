@@ -2,7 +2,7 @@
 
 A discoverability suite for a NAS: see where the space goes, find what is no longer needed, and record what things are for. Built for Unraid servers that use ZFS pools; [SCOPE.md](SCOPE.md) has the full scope.
 
-**Status: the interface is being built screen by screen.** You can sign in from a browser, start a scan, browse where the space goes, look at an item and record what it is for, and work through a review queue one item at a time. Screens that are not built yet say so.
+**Status: the first release's screens are built.** From a browser you can scan the pool, see where the space goes (as a list and as a map), search everything, work through a review queue one item at a time, manage prefixes and see how much of each share is described, and look at the datasets behind it all. Still to come: generated previews for video and photo formats a browser cannot show, and the step 4 features (quarantine, staleness, naming, duplicates).
 
 ## Run it on Unraid
 
@@ -172,7 +172,8 @@ Everything but the first three routes needs the session cookie; anything but `GE
 | `PUT`, `DELETE /api/entries/{id}/annotation` | Record or remove an annotation. Saving with every field empty skips the item; deleting returns it to review |
 | `GET /api/entries/{id}/content` | File contents for the preview pane, with range requests |
 | `GET /api/shares`, `GET /api/shares/{id}/annotations` | Annotation coverage per share; everything recorded in one |
-| `GET`, `PUT /api/prefixes` | The prefix list |
+| `DELETE /api/shares/{id}/annotations?path=` | Remove a note whose item was not found at the last scan |
+| `GET`, `PUT /api/prefixes` | The prefix list; reading it also gives how many items carry each prefix |
 | `POST /api/queue` | The next items of a review, grouped and ordered by the keys you give |
 | `POST /api/queue/skip` | Skip everything left in one group of a review |
 
