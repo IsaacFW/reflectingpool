@@ -1,6 +1,6 @@
 # Reflecting Pool: interface proposal
 
-Status: draft for the owner's approval. Nothing here is final code. The clickable mockup is `design/mockups/index.html`.
+Status: approved by the owner on 2026-10-05 with the answers listed under "Decisions". Where a decision differs from the rest of this document or from the mockup, the decision wins; neither has been rewritten to match. Nothing here is final code. The clickable mockup is `design/mockups/index.html`.
 
 ## Summary
 
@@ -508,6 +508,23 @@ Light and dark are both designed, from the same tokens, and follow the system se
 ### Step 4, each with its feature
 
 Staleness (which clocks count, per dataset), naming candidates and suggestions, rename on disk, quarantine (move, list, restore, purge, retention), the undo log, the duplicates job (start, progress, sets), the orphan finders, and growth between scans.
+
+## Decisions
+
+The owner answered the fifteen questions below on 2026-10-05. These answers differ from the recommendation and override it:
+
+| # | Decision | What it changes |
+|---|---|---|
+| Q1 | There is no separate skip key. Ctrl+Enter on a blank form skips the item. Ctrl+Z goes back. | PageDown and PageUp are not used. While the form has been edited, Ctrl+Z undoes typing as usual; once the form is untouched it goes back to the previous item. |
+| Q6 | Units are a setting, and the default is decimal (GB, TB). | |
+| Q8 | Previews for files the browser cannot show ship in the first release. | A media tool is added to the image for video poster frames and for RAW and HEIC thumbnails. API gap 19 becomes part of the first release. It decodes untrusted files, so it runs without root rights and with a time limit. |
+| Q9 | There are no scheduled scans by default. A schedule is something the user sets up. | The server never scans by itself unless a schedule has been set. |
+| Q10 | Age becomes a review grouping key. Prefix does not. | The prefix half of gap 15 is dropped. |
+| Q13 | No build step. | Type checking runs in CI only. |
+| Q14 | Phone support is not a goal for now. | The single-column layout is not built. |
+| Q15 | The dialog preselects Balanced, then the last choice. The first scan is started by the user. | The server no longer scans at first start. |
+
+Accepted as recommended: Q2 (folder-level review tools), Q3 (treemap, switchable), Q4 (three colours plus a neutral), Q5 (age colour by bytes), Q7 (on disk by default), Q11 (a blank Ctrl+Enter records a skip), Q12 (carry on at the end of a group).
 
 ## Questions for the owner
 
