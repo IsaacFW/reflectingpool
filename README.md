@@ -6,17 +6,23 @@ A discoverability suite for a NAS: see where the space goes, find what is no lon
 
 ## Run it on Unraid
 
-Build the image on any machine with Docker and copy it to the server:
+Every push to this repository tests the code and publishes an image to GitHub's container registry, tagged with the branch name:
+
+```
+ghcr.io/isaacfw/reflectingpool:backend-core
+```
+
+The image is private while the repository is. On the server, log in once with a GitHub personal access token that has only the `read:packages` permission:
 
 ```sh
-docker build -t reflectingpool .
-docker save reflectingpool | ssh root@YOUR-SERVER docker load
+docker login ghcr.io -u IsaacFW
 ```
 
 Then add a container with these settings. `tank` stands for your pool's name.
 
 | Setting | Value | Why |
 |---|---|---|
+| Repository | `ghcr.io/isaacfw/reflectingpool:backend-core` | `:latest` exists once this branch is merged into `main` |
 | Path | `/mnt/tank` to `/mnt/tank`, access mode **Read/Write - Slave** | Scanning, annotations. "Slave" lets datasets created later show up without a restart |
 | Path | `/mnt/tank/appdata/reflectingpool` to `/data` | The index, the admin account, the TLS key |
 | Variable | `RP_ROOTS=/mnt/tank` | What to scan. Several pools: comma-separated, one path mapping each |
@@ -33,7 +39,7 @@ docker run -d --name reflectingpool \
   -v /mnt/tank/appdata/reflectingpool:/data \
   --device /dev/zfs \
   -e RP_ROOTS=/mnt/tank \
-  reflectingpool
+  ghcr.io/isaacfw/reflectingpool:backend-core
 ```
 
 On first start the container log shows two things you need:
@@ -58,7 +64,7 @@ The third must **fail** with "permission denied". It confirms that an unprivileg
 ## ZFS
 
 - **What is read.** Datasets under each root are found from the mount table and need nothing special. With `/dev/zfs` passed in, the program also runs `zfs list`, the only ZFS command it ever runs, to learn how much space snapshots hold.
-- **Matching versions.** The `zfs` tool in the image must be the same release series as the host's ZFS module. The default image carries ZFS 2.4.x, which matches Unraid 7.3 ([7.3.2 ships OpenZFS 2.4.3](https://docs.unraid.net/unraid-os/release-notes/7.3.2/)). For an older host build with `--build-arg ALPINE_VERSION=3.22` (ZFS 2.3.x). `doctor` prints both versions.
+- **Matching versions.** The `zfs` tool in the image must be the same release series as the host's ZFS module. The default image carries ZFS 2.4.x, which matches Unraid 7.3 ([7.3.2 ships OpenZFS 2.4.3](https://docs.unraid.net/unraid-os/release-notes/7.3.2/)). For an older host, build the image yourself with `docker build --build-arg ALPINE_VERSION=3.22 .` (ZFS 2.3.x). `doctor` prints both versions.
 - **Without `/dev/zfs`.** Everything works except snapshot sizes. To get those without the device, schedule this on the host (for example hourly with the User Scripts plugin):
 
   ```sh
