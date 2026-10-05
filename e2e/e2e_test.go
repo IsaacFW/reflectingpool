@@ -84,6 +84,13 @@ func tree(root string) {
 	write(filepath.Join(root, "inbox/sub/deep2.txt"), make([]byte, 400))
 	write(filepath.Join(root, "inbox/x.txt"), make([]byte, 100))
 	write(filepath.Join(root, "inbox/last.txt"), make([]byte, 50))
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		os.MkdirAll(filepath.Join(root, "media/movies"), 0o755)
+		if out, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=20:size=640x360:rate=5",
+			"-c:v", "mpeg2video", filepath.Join(root, "media/movies/clip.mpg")).CombinedOutput(); err != nil {
+			panic(fmt.Sprintf("making a test film: %v\n%s", err, out))
+		}
+	}
 	for i := range 3000 {
 		write(filepath.Join(root, fmt.Sprintf("docs/many/file-%04d.bin", i)), make([]byte, 3000-i))
 	}
@@ -211,8 +218,10 @@ func open(t *testing.T) *page {
 			}
 			// Being signed out is asked for on purpose: the page finds out
 			// whether there is a session by asking for it. A wrong password
-			// is tried on purpose too.
-			if strings.Contains(m.Text, "status of 401") || slices.ContainsFunc(p.allow, func(a string) bool { return strings.Contains(m.Text, a) }) {
+			// is tried on purpose too. And the films in the test pool are
+			// mostly empty files, of which no preview can be made: the server
+			// says so with a 422, and the page shows its reason.
+			if strings.Contains(m.Text, "status of 401") || strings.Contains(m.Text, "status of 422") || slices.ContainsFunc(p.allow, func(a string) bool { return strings.Contains(m.Text, a) }) {
 				continue
 			}
 			if m.IsException() || m.Type == "error" || m.Type == "warning" {
@@ -451,7 +460,7 @@ func TestTheInterface(t *testing.T) {
 	// A file the browser cannot play says so instead of showing a dead player
 	// (the test's films are empty), and a PDF opens in a frame of our own.
 	p.do("13b a film that will not play",
-		chromedp.WaitVisible(`//div[contains(@class,"pv-msg")][contains(., "could not be shown")]`),
+		chromedp.WaitVisible(`//div[contains(@class,"pv-msg")][contains(., "No preview")]`),
 	)
 	p.do("13c pdf",
 		chromedp.DoubleClick(row("taxes")),
@@ -1001,6 +1010,33 @@ func TestFolderTree(t *testing.T) {
 	p.do("tree 05 hidden again",
 		chromedp.Click(has("button", "Hide the folder tree")),
 		chromedp.WaitNotPresent(`nav[aria-label="Folders"]`),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+// A film in a format no browser plays is shown as stills made on the server,
+// which open large like any picture.
+func TestPreviews(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg is not installed here, so there is no film to preview")
+	}
+	p := open(t)
+	p.signIn("previews 01 signed in", "/space?path="+root+"/media/movies/clip.mpg", `.insp`)
+	p.do("previews 02 stills from a film",
+		chromedp.WaitVisible(`.insp .pv img`),
+		until(`(() => { const i = document.querySelector('.insp .pv img'); return i && i.complete && i.naturalWidth === 1292; })()`),
+		chromedp.WaitVisible(`//div[contains(@class,"pv-cap")][contains(., "8 stills")][contains(., "640×360")][contains(., "mpeg2video")]`),
+	)
+	if eval[bool](p, `!!document.evaluate('//button[.="Play it here"]', document).iterateNext()`) {
+		t.Error("a player is offered for a format the browser cannot play")
+	}
+	p.do("previews 03 large",
+		chromedp.Click(`.insp .pv-zoom`),
+		chromedp.WaitVisible(`dialog.lightbox[open] img`),
+		chromedp.KeyEvent(kb.Escape),
+		chromedp.WaitNotPresent(`dialog.lightbox`),
 	)
 	if c := p.complaints(); len(c) > 0 {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))

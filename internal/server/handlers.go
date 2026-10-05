@@ -4,6 +4,7 @@ import (
 	"context"
 	"mime"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/IsaacFW/reflectingpool/internal/auth"
@@ -540,5 +541,39 @@ func (s *Server) content(w http.ResponseWriter, r *http.Request, _ auth.Session)
 		h.Set("Content-Security-Policy", "sandbox; frame-ancestors 'self'")
 	}
 	h.Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, "", st.ModTime(), f)
+}
+
+// preview serves a generated picture of a file the browser cannot show by
+// itself, or with info=1 what is known about it (a film's length, size and
+// codec). The picture is made the first time it is asked for and kept.
+func (s *Server) preview(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	id, err := pathID(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	path, info, err := s.app.Preview(r.Context(), id)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if r.URL.Query().Get("info") != "" {
+		writeJSON(w, http.StatusOK, info)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, "", st.ModTime(), f)
 }

@@ -40,20 +40,24 @@ func TestLibrariesMatchTheirChecksums(t *testing.T) {
 	}
 }
 
-var imports = regexp.MustCompile(`(?:from|import)\s*["']([^"']+)["']`)
+// An import or re-export statement and the file it names. The word "from" in
+// a sentence of the interface's own text is not one.
+var imports = regexp.MustCompile(`(?:import|export)\s*(?:\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?|[\w$]+)\s*from\s*["']([^"']+)["']|import\s*["']([^"']+)["']`)
 
 // Every import must name a file that is served. A browser cannot resolve a
 // package name, and a wrong path only shows as a blank page.
 func TestEveryImportResolves(t *testing.T) {
 	files, _ := fs.Glob(Files, "app/*.js")
 	libs, _ := fs.Glob(Files, "lib/*.js")
+	seen := 0
 	for _, file := range append(files, libs...) {
 		src, err := Files.ReadFile(file)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, m := range imports.FindAllStringSubmatch(string(src), -1) {
-			target := m[1]
+			seen++
+			target := m[1] + m[2]
 			if !strings.HasPrefix(target, "./") && !strings.HasPrefix(target, "../") {
 				t.Errorf("%s imports %q, which is not a path to a file", file, target)
 				continue
@@ -62,6 +66,9 @@ func TestEveryImportResolves(t *testing.T) {
 				t.Errorf("%s imports %q, which is not in the binary", file, target)
 			}
 		}
+	}
+	if seen < 2*len(files) {
+		t.Errorf("only %d imports were recognised in %d files: the check has stopped seeing them", seen, len(files))
 	}
 	if len(files) == 0 || len(libs) == 0 {
 		t.Fatal("the interface's files are missing from the binary")

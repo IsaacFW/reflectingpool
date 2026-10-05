@@ -18,6 +18,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/auth"
 	"github.com/IsaacFW/reflectingpool/internal/core"
 	"github.com/IsaacFW/reflectingpool/internal/index"
+	"github.com/IsaacFW/reflectingpool/internal/preview"
 	"github.com/IsaacFW/reflectingpool/web"
 )
 
@@ -71,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 		"PUT /api/entries/{id}/annotation":    s.putAnnotation,
 		"DELETE /api/entries/{id}/annotation": s.deleteAnnotation,
 		"GET /api/entries/{id}/content":       s.content,
+		"GET /api/entries/{id}/preview":       s.preview,
 		"POST /api/queue":                     s.queue,
 		"POST /api/queue/skip":                s.queueSkip,
 	}
@@ -254,6 +256,12 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnauthorized, "invalid_credentials"
 	case errors.Is(err, auth.ErrSetupCode):
 		status, code = http.StatusForbidden, "bad_setup_code"
+	case errors.Is(err, preview.ErrUnsupported):
+		status, code = http.StatusNotFound, "no_preview"
+	case errors.Is(err, preview.ErrNoTool):
+		status, code = http.StatusServiceUnavailable, "previews_unavailable"
+	case errors.As(err, new(*preview.FailedError)):
+		status, code = http.StatusUnprocessableEntity, "preview_failed"
 	case errors.As(err, new(*core.ShareReadOnlyError)):
 		status, code = http.StatusForbidden, "share_read_only"
 	case errors.Is(err, core.ErrReadOnly):
