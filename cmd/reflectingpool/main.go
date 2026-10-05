@@ -56,6 +56,8 @@ Settings come from the environment:
   RP_EXCLUDE        extra directories to skip, comma-separated absolute paths
   RP_WORKERS       parallel directory walkers for an aggressive scan
                     (default: 4 per core, 8 to 32)
+  RP_WEB_DIR        serve the interface from this folder instead of the built-in
+                    copy, for working on it (the web/ folder of the source)
   RP_ZFS_LIST_FILE  output of the host script, when /dev/zfs is not passed in
                     (default <RP_DATA>/zfs-list.txt)
 `
@@ -203,9 +205,14 @@ func cmdServe() error {
 		return err
 	}
 
+	opts := server.Options{TLS: !s.insecureHTTP, TrustProxy: s.trustProxy, Version: version}
+	if dir := os.Getenv("RP_WEB_DIR"); dir != "" {
+		log.Printf("serving the interface from %s, not the built-in copy", dir)
+		opts.Web = os.DirFS(dir)
+	}
 	srv := &http.Server{
 		Addr:              s.listen,
-		Handler:           server.New(app, authSvc, server.Options{TLS: !s.insecureHTTP, TrustProxy: s.trustProxy, Version: version}).Handler(),
+		Handler:           server.New(app, authSvc, opts).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		BaseContext:       func(net.Listener) context.Context { return ctx },

@@ -76,6 +76,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request, _ auth.Session) 
 func (s *Server) session(w http.ResponseWriter, r *http.Request, sess auth.Session) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": sess.User, "csrf": sess.CSRF, "read_only": s.app.Config().ReadOnly, "version": s.opts.Version,
+		"roots": s.app.Config().Roots,
 	})
 }
 

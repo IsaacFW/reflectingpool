@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"mime"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/auth"
 	"github.com/IsaacFW/reflectingpool/internal/core"
 	"github.com/IsaacFW/reflectingpool/internal/index"
+	"github.com/IsaacFW/reflectingpool/web"
 )
 
 type Options struct {
@@ -27,16 +29,24 @@ type Options struct {
 	// them; otherwise clients could forge their address to dodge lockouts.
 	TrustProxy bool
 	Version    string
+	// Web holds the interface's files. The ones built into the binary are
+	// used when it is nil; a folder on disk can stand in during development.
+	Web fs.FS
 }
 
 type Server struct {
 	app  *core.App
 	auth *auth.Service
 	opts Options
+	web  fs.FS
 }
 
 func New(app *core.App, a *auth.Service, opts Options) *Server {
-	return &Server{app: app, auth: a, opts: opts}
+	s := &Server{app: app, auth: a, opts: opts, web: opts.Web}
+	if s.web == nil {
+		s.web = web.Files
+	}
+	return s
 }
 
 const maxBody = 1 << 20
@@ -84,10 +94,14 @@ func (s *Server) Handler() http.Handler {
 	for pattern, h := range anyIndex {
 		mux.HandleFunc(pattern, s.authed(h, false))
 	}
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprintln(w, "Reflecting Pool is running. The web interface has not been built yet; the API is under /api/.")
-	})
+	// The interface: one page for every screen, and the files it loads.
+	mux.HandleFunc("GET /{$}", s.shell)
+	for _, screen := range screens {
+		mux.HandleFunc("GET /"+screen, s.shell)
+	}
+	mux.HandleFunc("GET /style.css", s.static)
+	mux.HandleFunc("GET /app/{file}", s.static)
+	mux.HandleFunc("GET /lib/{file}", s.static)
 	return s.headers(mux)
 }
 

@@ -2,7 +2,7 @@
 
 A discoverability suite for a NAS: see where the space goes, find what is no longer needed, and record what things are for. Built for Unraid servers that use ZFS pools; [SCOPE.md](SCOPE.md) has the full scope.
 
-**Status: backend only.** The scanner, index, login, annotations, review queue and JSON API work and are tested. There is no web interface yet; that follows a design evaluation (see "Build order" in the scope). Until then the container is useful for checking that it works on your server and for measuring scan speed.
+**Status: the first screens work.** You can sign in from a browser, start a scan, browse where the space goes folder by folder, look at an item and record what it is for. Find, Review, Overview, Annotations and Storage are still to come (see "Build order" in the scope); their backend is in place and tested.
 
 ## Run it on Unraid
 
@@ -56,7 +56,11 @@ On first start the container log shows two things you need:
 - **A setup code.** Creating the admin account requires it, so nobody else on the network can claim the server first.
 - **The certificate's SHA-256 fingerprint.** The certificate is self-signed, so the browser will warn once; the fingerprint lets you confirm the certificate it shows is this one.
 
-Nothing is scanned until you ask. The server never scans by itself unless you set a schedule. Until the web interface exists, start a scan from the command line; a running server picks the result up within half a minute:
+Then open `https://<server>:8443` in a browser, accept the certificate once, and create the account with the setup code.
+
+Nothing is scanned until you ask. **Start the first scan** opens a dialog with three intensities; Balanced is a sensible first choice. The page shows the scan's progress and has a Stop button, and you can set a daily scan under Settings. The server never scans by itself otherwise.
+
+A scan can also be run from the command line; a running server picks the result up within half a minute:
 
 ```sh
 docker exec reflectingpool reflectingpool scan -intensity balanced
@@ -124,6 +128,7 @@ All settings are environment variables.
 | `RP_READ_ONLY` | off | `1` disables everything that changes files, annotations included |
 | `RP_EXCLUDE` | | Extra directories to skip, comma-separated absolute paths |
 | `RP_WORKERS` | 4 per core, 8 to 32 | Parallel directory walkers for an aggressive scan |
+| `RP_WEB_DIR` | built-in files | Serve the interface from this folder instead, for working on it |
 | `RP_ZFS_LIST_FILE` | `<RP_DATA>/zfs-list.txt` | Output of the host script above |
 
 Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's image layers), each share's `.reflection` folder, and the data directory itself.
@@ -204,9 +209,21 @@ Requires Go 1.27, or only Docker: `scripts/go.sh` runs the Go toolchain in a con
 go test ./...                                      # unit and API tests
 go test -race ./...                                # needs cgo
 go run ./cmd/reflectingpool bench /some/directory  # speed on any tree
+scripts/typecheck.sh                               # the interface's types (Docker)
+scripts/e2e.sh                                     # the interface in a real browser (Docker)
 ```
 
 The tests run on any Linux filesystem. Nothing in them needs ZFS, which also means the ZFS-specific paths (`zfs list` through `/dev/zfs`, dataset boundaries, snapshot accounting) are covered by parsers and fixtures only until checked on a real pool.
+
+### The interface
+
+The interface is the `web/` folder: one page, one stylesheet, and plain JavaScript modules. There is no build step. The binary carries the files as they are, and what is in the folder is what runs.
+
+- **Working on it:** set `RP_WEB_DIR` to the `web/` folder and the server reads the files from disk, so a change shows on the next reload.
+- **Libraries:** Preact, htm and Preact Signals, about 26 kB in all, are copied into `web/lib/` at pinned versions. `web/lib/update.sh` fetches them, checks them against the checksums npm publishes, and records the result; a test fails if a file in that folder is changed any other way.
+- **Rules a test enforces:** nothing inline in the page (it is served under a content security policy that allows scripts and styles from this server only), no import by package name, and no API that parses text as markup. File names and notes are untrusted text.
+- **Types** are JSDoc comments, checked by `scripts/typecheck.sh`. It reads the files and builds nothing.
+- **Browser tests** (`e2e/`, its own Go module) build the program, start it on a small tree and drive it through headless Chromium: setup, a scan, browsing, previews, saving a note, the keyboard, settings, signing out and in. They fail on any script error or anything the browser refuses. `RP_E2E_SHOTS=<folder>` saves a screenshot of every step.
 
 ## Licence
 
