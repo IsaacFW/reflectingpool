@@ -1,0 +1,2599 @@
+<title>Reflecting Pool Mockup</title>
+<style>
+/* Layout: left rail, work area in the middle, and the right-hand column always holds "the item" (inspector or preview).
+   Colour is spent on data and state only; the chrome stays in cool slate.
+   Type: what is on disk (names, paths) is set in the monospace face; what a person wrote is set in the sans face. */
+:root{
+  --page:#f1f4f4; --panel:#fbfcfc; --sunken:#e7ecec; --line:#d5dcdd; --line-2:#b9c3c5;
+  --ink:#0f1a1e; --ink-2:#44545a; --ink-3:#66757b;
+  --accent:#0b6378; --on-accent:#ffffff; --accent-wash:#dcecef;
+  --c-video:#256abf; --on-video:#ffffff;
+  --c-backup:#eb6834; --on-backup:#0b1215;
+  --c-image:#1baf7a; --on-image:#0b1215;
+  --c-other:#a7b1b5; --on-other:#0b1215;
+  --age-1:#86b6ef; --on-age-1:#0b1215;
+  --age-2:#5598e7; --on-age-2:#0b1215;
+  --age-3:#256abf; --on-age-3:#ffffff;
+  --age-4:#184f95; --on-age-4:#ffffff;
+  --age-5:#0d366b; --on-age-5:#ffffff;
+  --hatch-a:#8a989d; --hatch-b:#e3e8e9;
+  --good:#0ca30c; --warn:#fab219; --crit:#d03b3b;
+  --on-good:#ffffff; --on-warn:#0b1215; --on-crit:#ffffff;
+  --good-ink:#006300; --warn-ink:#7a5200; --crit-ink:#b02a2a;
+  --good-wash:#e3f4e3; --warn-wash:#fdf1d3; --crit-wash:#fae3e3;
+  --paper:#ffffff; --paper-ink:#20262a; --paper-line:#c8ced0;
+  --screen:#0b0f11; --on-screen:#e7eef0;
+  --veil:rgba(8,14,17,.55);
+  --shadow:0 1px 2px rgba(15,26,30,.08),0 8px 24px rgba(15,26,30,.12);
+  --font-ui:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
+  --font-fs:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --page:#0e1417; --panel:#151c20; --sunken:#0a0f12; --line:#27323a; --line-2:#3b4a54;
+    --ink:#e7eef0; --ink-2:#a9b8be; --ink-3:#84949b;
+    --accent:#6cc3d8; --on-accent:#06242c; --accent-wash:#12343d;
+    --c-video:#3987e5; --on-video:#0b1215;
+    --c-backup:#d95926; --on-backup:#0b1215;
+    --c-image:#199e70; --on-image:#0b1215;
+    --c-other:#5f6c72; --on-other:#ffffff;
+    --age-1:#184f95; --on-age-1:#ffffff;
+    --age-2:#256abf; --on-age-2:#ffffff;
+    --age-3:#3987e5; --on-age-3:#0b1215;
+    --age-4:#6da7ec; --on-age-4:#0b1215;
+    --age-5:#9ec5f4; --on-age-5:#0b1215;
+    --hatch-a:#6f7e85; --hatch-b:#222c32;
+    --good-ink:#5fd35f; --warn-ink:#fab219; --crit-ink:#f08080;
+    --good-wash:#11301a; --warn-wash:#3a2c08; --crit-wash:#3b1717;
+    --paper:#f4f5f5; --paper-ink:#20262a; --paper-line:#c8ced0;
+    --screen:#05080a; --on-screen:#e7eef0;
+    --veil:rgba(0,0,0,.6);
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --page:#0e1417; --panel:#151c20; --sunken:#0a0f12; --line:#27323a; --line-2:#3b4a54;
+  --ink:#e7eef0; --ink-2:#a9b8be; --ink-3:#84949b;
+  --accent:#6cc3d8; --on-accent:#06242c; --accent-wash:#12343d;
+  --c-video:#3987e5; --on-video:#0b1215;
+  --c-backup:#d95926; --on-backup:#0b1215;
+  --c-image:#199e70; --on-image:#0b1215;
+  --c-other:#5f6c72; --on-other:#ffffff;
+  --age-1:#184f95; --on-age-1:#ffffff;
+  --age-2:#256abf; --on-age-2:#ffffff;
+  --age-3:#3987e5; --on-age-3:#0b1215;
+  --age-4:#6da7ec; --on-age-4:#0b1215;
+  --age-5:#9ec5f4; --on-age-5:#0b1215;
+  --hatch-a:#6f7e85; --hatch-b:#222c32;
+  --good-ink:#5fd35f; --warn-ink:#fab219; --crit-ink:#f08080;
+  --good-wash:#11301a; --warn-wash:#3a2c08; --crit-wash:#3b1717;
+  --paper:#f4f5f5; --paper-ink:#20262a; --paper-line:#c8ced0;
+  --screen:#05080a; --on-screen:#e7eef0;
+  --veil:rgba(0,0,0,.6);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.45);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.45;margin:0}
+h1,h2,h3,h4,p,figure,dl,dd{margin:0}
+h1,h2,h3{text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.fs{font-family:var(--font-fs);font-size:.93em;letter-spacing:-.01em}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.muted{color:var(--ink-3)}
+
+.shell{max-width:1720px;margin:0 auto;padding-inline:16px;padding-block:10px 40px}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:4px 10px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:650;font-size:16px}
+.lg-a{fill:var(--accent)} .lg-b{fill:var(--accent);opacity:.32}
+.mock{font-size:11.5px;font-weight:500;color:var(--ink-3);border:1px dashed var(--line-2);border-radius:999px;padding:1px 8px}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.top-r label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.idx{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2);border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 10px}
+.idx i{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+.idx.stale i{background:var(--warn)} .idx.run i{background:var(--accent)}
+
+.body{display:grid;grid-template-columns:172px minmax(0,1fr);gap:16px;align-items:start}
+.rail{display:flex;flex-direction:column;gap:2px;position:sticky;top:calc(env(safe-area-inset-top, 0px) + 8px);min-width:0}
+.rail button{text-align:left;padding:7px 10px;border-radius:var(--r);border:0;background:transparent;color:var(--ink-2);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;white-space:nowrap}
+.rail button:hover{background:var(--sunken)}
+.rail button[aria-current="page"]{background:var(--accent-wash);color:var(--ink);font-weight:600}
+.rail small{font-size:10.5px;color:var(--ink-3);font-weight:500}
+#view{min-width:0}
+@media (max-width:1000px){
+  .body{grid-template-columns:minmax(0,1fr);gap:10px}
+  .rail{position:static;flex-direction:row;overflow-x:auto;padding-bottom:4px}
+}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+.pad{padding:12px 14px}
+.sh{display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap;margin-bottom:10px}
+.sh h1{font-size:20px;font-weight:650}
+.sh .sub{color:var(--ink-2)}
+h2.t{font-size:13px;font-weight:650;letter-spacing:.02em;margin-bottom:8px}
+.guide{font-size:12.5px;color:var(--ink-2);border:1px dashed var(--line-2);border-radius:var(--r);padding:7px 10px;margin-bottom:10px;max-width:1040px}
+.guide b{color:var(--ink)}
+.stack{display:flex;flex-direction:column;gap:12px}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
+.split>*{min-width:0}
+@media (max-width:1100px){.split{grid-template-columns:minmax(0,1fr)}}
+
+.btn{padding:6px 12px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:hover{background:var(--sunken)}
+.btn.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.small{padding:3px 8px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.link{border:0;background:transparent;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.kbd{font-family:var(--font-fs);font-size:11px;border:1px solid var(--line-2);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--panel);color:var(--ink-2);white-space:nowrap;font-weight:500}
+.btn.primary .kbd{background:transparent;color:var(--on-accent);border-color:currentColor;opacity:.85}
+input[type=text],input[type=search],input[type=password],textarea,select{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);padding:6px 8px;min-width:0}
+input[type=text],input[type=search],input[type=password],textarea{width:100%}
+textarea{resize:vertical;line-height:1.4;display:block}
+input:disabled,textarea:disabled{background:var(--sunken);color:var(--ink-3)}
+.later{font-size:10.5px;border:1px solid var(--line-2);border-radius:999px;padding:0 6px;color:var(--ink-3);white-space:nowrap;font-weight:500}
+
+.ctls{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-bottom:10px}
+.ctl{display:flex;align-items:center;gap:6px}
+.ctl-l{font-size:12.5px;color:var(--ink-2)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:var(--r);overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:transparent;padding:4px 10px;cursor:pointer;font-size:13px;color:var(--ink-2)}
+.seg button+button{border-left:1px solid var(--line-2)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--page);font-weight:600}
+.seg button:focus-visible{outline-offset:-2px}
+
+.banner{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;padding:8px 12px;border-radius:var(--r);margin-bottom:10px;border:1px solid var(--line);background:var(--panel)}
+.banner>div{flex:1;min-width:220px}
+.banner.info{background:var(--accent-wash);border-color:var(--accent-wash)}
+.banner.warn{background:var(--warn-wash);border-color:var(--warn)}
+.banner.crit{background:var(--crit-wash);border-color:var(--crit)}
+.banner.good{background:var(--good-wash);border-color:var(--good)}
+.st{display:inline-flex;align-items:center;gap:6px;font-weight:650;white-space:nowrap}
+.st i{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:11px;font-weight:700;flex:none;background:var(--accent);color:var(--on-accent)}
+.warn .st i{background:var(--warn);color:var(--on-warn)} .crit .st i{background:var(--crit);color:var(--on-crit)} .good .st i{background:var(--good);color:var(--on-good)}
+.warn .st{color:var(--warn-ink)} .crit .st{color:var(--crit-ink)} .good .st{color:var(--good-ink)}
+.prog{height:8px;background:var(--sunken);border-radius:4px;overflow:hidden;margin-top:6px;max-width:520px}
+.prog i{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0}
+.banner.info .prog{background:var(--panel)}
+
+/* data marks */
+.k-video{background:var(--c-video);color:var(--on-video)}
+.k-backup{background:var(--c-backup);color:var(--on-backup)}
+.k-image{background:var(--c-image);color:var(--on-image)}
+.k-other{background:var(--c-other);color:var(--on-other)}
+.k-plain{background:var(--ink-3)}
+.a-1{background:var(--age-1);color:var(--on-age-1)} .a-2{background:var(--age-2);color:var(--on-age-2)}
+.a-3{background:var(--age-3);color:var(--on-age-3)} .a-4{background:var(--age-4);color:var(--on-age-4)}
+.a-5{background:var(--age-5);color:var(--on-age-5)}
+.k-snap{background:repeating-linear-gradient(45deg,var(--hatch-a) 0 2px,var(--hatch-b) 2px 6px);color:var(--ink)}
+.k-quar{background:repeating-linear-gradient(135deg,var(--hatch-a) 0 2px,var(--hatch-b) 2px 6px);color:var(--ink)}
+.k-rest{background:var(--sunken);color:var(--ink-2)}
+.bar{height:10px;display:flex;align-items:stretch}
+.fill{display:flex;gap:2px;min-width:2px;height:100%}
+.fill>i{display:block;flex-basis:0;min-width:0}
+.fill>i:last-child{border-radius:0 4px 4px 0}
+.fill.hollow{border:1px solid var(--ink-3);border-radius:0 4px 4px 0}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink-2);align-items:center}
+.legend-t{color:var(--ink-3)}
+.legend-i{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.sw{width:12px;height:12px;border-radius:2px;display:inline-block;flex:none}
+.meter{height:8px;background:var(--sunken);border-radius:4px;overflow:hidden;min-width:48px}
+.meter i{display:block;height:100%;background:var(--accent);border-radius:0 4px 4px 0}
+
+/* tables */
+.tw{overflow-x:auto}
+table.list{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.list th{text-align:left;font-weight:600;color:var(--ink-3);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list th.num{text-align:right}
+.list td{padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:middle;overflow:hidden}
+.list tbody tr{cursor:pointer}
+.list tbody tr:hover{background:var(--sunken)}
+.list tbody tr.sel{background:var(--accent-wash)}
+.list tbody tr:focus-visible{outline-offset:-2px}
+.list tbody tr.pseudo{cursor:default}
+.list tbody tr.pseudo:hover{background:transparent}
+.list th button{border:0;background:transparent;padding:0;cursor:pointer;font-weight:600;color:inherit}
+.list th[aria-sort] button{color:var(--ink)}
+.c-bar{width:22%} .c-pct{width:62px} .c-size{width:92px} .c-items{width:88px} .c-age{width:122px} .c-type{width:92px} .c-note{width:22%} .c-snap{width:96px} .c-cov{width:150px}
+.nm{display:flex;align-items:center;gap:6px;min-width:0}
+.nm>.fs,.nm>.dn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.nm>.dn{font-weight:600;flex:0 1 auto}
+.nm>.fs.sub{color:var(--ink-3);flex:0 2 auto}
+.where{color:var(--ink-3);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:20px}
+.ico{fill:none;stroke:currentColor;stroke-width:1.2;stroke-linejoin:round;flex:none;color:var(--ink-3)}
+.mark{font-size:10.5px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:0 6px;white-space:nowrap;flex:none}
+.mark.noted{border-color:var(--accent);color:var(--accent)}
+.tag{font-family:var(--font-fs);font-size:10.5px;background:var(--sunken);border:1px solid var(--line-2);border-radius:3px;padding:0 4px;white-space:nowrap;flex:none}
+td.c-note{color:var(--ink-2);white-space:nowrap;text-overflow:ellipsis}
+.find-t .c-bar{width:110px} @media (max-width:1360px){.find-t .c-note{display:none}}
+@media (max-width:700px){.c-items,.c-age,.c-pct,.c-type,.c-note,.c-snap,.c-cov{display:none} .c-bar{width:64px} .c-size{width:80px}}
+
+/* overview */
+.hero{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.hero b{font-size:30px;font-weight:650;line-height:1.1}
+.capbar{display:flex;gap:2px;height:22px;border-radius:4px;overflow:hidden;background:var(--sunken);margin-bottom:8px}
+.capbar i{display:block;flex-basis:0;min-width:2px}
+.capbar i.free{background:transparent}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.card{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.card p{color:var(--ink-2);font-size:13px}
+.card .big{font-size:16px;font-weight:650;color:var(--ink)}
+.rows{display:flex;flex-direction:column;gap:4px;font-size:13px;width:100%}
+.rows>div{display:flex;justify-content:space-between;gap:10px}
+.rows>div>span:first-child{color:var(--ink-2)}
+
+/* space */
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;font-size:15px;margin-bottom:4px}
+.crumb{border:0;background:transparent;padding:0;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.crumbs .sep{color:var(--ink-3)}
+.map{position:relative;height:300px;overflow:hidden;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);margin-bottom:8px;user-select:none}
+.cell{position:absolute;overflow:hidden;font-size:11.5px;line-height:1.25;padding:3px 5px;cursor:pointer;border-radius:2px}
+.cell b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell.k-snap b,.cell.k-snap span{display:inline-block;background:var(--panel);color:var(--ink);padding:0 3px;border-radius:2px;max-width:100%}
+.cell.sel,.grp-h.sel{box-shadow:inset 0 0 0 2px var(--panel),inset 0 0 0 4px var(--ink)}
+.cell:hover{filter:brightness(1.08)}
+.grp{position:absolute;background:var(--sunken);border-radius:3px}
+.grp-h{position:absolute;left:0;right:0;top:0;height:18px;font-size:11.5px;padding:1px 5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border-radius:3px}
+.map-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-3);padding:16px;text-align:center}
+.map-note{font-size:12.5px;color:var(--ink-3);margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;justify-content:space-between}
+.tip{position:fixed;z-index:60;pointer-events:none;background:var(--ink);color:var(--page);padding:6px 9px;border-radius:4px;font-size:12px;max-width:300px;box-shadow:var(--shadow)}
+.tip b{display:block;font-size:14px}
+.tip span{display:block;overflow-wrap:anywhere}
+@media (max-width:700px){.map{height:220px}}
+
+/* inspector and previews */
+.insp{display:flex;flex-direction:column;gap:10px;padding:12px}
+.insp-kind{font-size:11.5px;color:var(--ink-3);letter-spacing:.04em;text-transform:uppercase}
+.insp h3{font-size:15px;font-weight:650;overflow-wrap:anywhere}
+.insp-name{overflow-wrap:anywhere}
+div.insp-name{color:var(--ink-2)}
+.insp-path{color:var(--ink-3);font-size:12px;overflow-wrap:anywhere}
+.facts{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 12px;font-size:13px}
+.facts dt{color:var(--ink-2)}
+.facts dd{overflow-wrap:anywhere}
+.facts dd.on{font-weight:650}
+.actions{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.field{display:flex;flex-direction:column;gap:4px}
+.field>label{font-size:12.5px;font-weight:650;color:var(--ink-2)}
+.hint{font-size:12px;color:var(--ink-3)}
+.err{font-size:12.5px;color:var(--crit-ink);font-weight:600}
+.pv-cap{font-size:12px;color:var(--ink-3)}
+.ph{width:100%;height:auto;max-height:540px;border-radius:4px;display:block;background:var(--sunken)}
+.ph-sky{fill:var(--age-1)} .ph-sun{fill:var(--warn)} .ph-far{fill:var(--age-4)} .ph-near{fill:var(--c-image)}
+.pv-video{position:relative;aspect-ratio:16/9;max-width:100%;background:var(--screen);color:var(--on-screen);border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.pv-video .ph{position:absolute;inset:0;height:100%;max-height:none;opacity:.5;border-radius:0}
+.pv-video .play{position:relative;width:58px;height:58px;border-radius:50%;border:2px solid var(--on-screen);background:var(--screen);color:var(--on-screen);cursor:pointer;font-size:13px;font-weight:650}
+.pv-video .vbar{position:absolute;left:10px;right:10px;bottom:10px;height:4px;background:var(--ink-3);border-radius:2px;overflow:hidden}
+.pv-video .vbar i{display:block;height:100%;width:3%;background:var(--on-screen)}
+.pv-video.playing .vbar i{width:100%}
+@media (prefers-reduced-motion:no-preference){.pv-video.playing .vbar i{transition:width 40s linear}}
+.pv-audio{display:flex;align-items:center;gap:10px;padding:14px;background:var(--sunken);border-radius:4px}
+.wave{display:flex;align-items:center;gap:2px;flex:1;height:44px;min-width:0;overflow:hidden}
+.wave i{display:block;width:3px;background:var(--ink-3);border-radius:1px;flex:none}
+.pv-pdf{background:var(--sunken);padding:14px;border-radius:4px;display:flex;justify-content:center}
+.sheet{background:var(--paper);color:var(--paper-ink);width:min(100%,440px);aspect-ratio:1/1.414;padding:9% 10%;box-shadow:var(--shadow);font-size:11px;overflow:hidden}
+.sheet h4{font-size:14px;margin:0 0 10px;overflow-wrap:anywhere}
+.sheet i{display:block;height:6px;background:var(--paper-line);border-radius:3px;margin:8px 0;width:92%}
+.sheet i.w7{width:70%} .sheet i.w8{width:84%} .sheet i.w4{width:42%}
+.pv-text{font-family:var(--font-fs);font-size:12.5px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0;background:var(--sunken);padding:10px;border-radius:4px;max-height:480px;overflow:auto}
+.pv-card{display:flex;flex-direction:column;gap:10px}
+.pv-msg{padding:10px 12px;border-radius:4px;background:var(--sunken)}
+.pv-msg b{display:block}
+.pv-msg.crit{background:var(--crit-wash)} .pv-msg.crit b{color:var(--crit-ink)}
+table.mini{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+.mini td{padding:3px 6px;border-bottom:1px solid var(--line);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mini td.b{width:26%} .mini td.s{width:84px}
+.mini tr.hl{background:var(--accent-wash);font-weight:600}
+.mini tr.peek{cursor:pointer}
+.mini tr.peek:hover{background:var(--sunken)}
+.pv.compact .ph{max-height:170px} .pv.compact .pv-text{max-height:150px} .pv.compact .sheet{width:min(100%,190px)} .pv.compact .pv-video{max-height:180px}
+
+/* find */
+.filters{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:flex-end;margin-bottom:8px}
+.filters label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--ink-2)}
+.filters .grow{flex:1 1 220px;min-width:160px}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center}
+.chipb{border:1px solid var(--line-2);background:var(--panel);border-radius:999px;padding:3px 11px;cursor:pointer;font-size:13px}
+.chipb:hover{background:var(--sunken)}
+.chipb[aria-pressed="true"]{background:var(--ink);color:var(--page);border-color:var(--ink)}
+.chipb.plan{border-style:dashed;color:var(--ink-2)}
+.sum{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--line)}
+.scope{display:inline-flex;align-items:center;gap:6px;background:var(--accent-wash);border-radius:999px;padding:2px 4px 2px 10px;font-size:12.5px}
+.scope button{border:0;background:transparent;cursor:pointer;padding:0 6px;font-size:14px;line-height:1}
+
+/* review */
+.rv-top{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.rv-top .q{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+.rv-top .q b{font-weight:650}
+.okey{font-size:12.5px;border:1px solid var(--line-2);border-radius:var(--r);padding:1px 8px;background:var(--panel);white-space:nowrap}
+.rv-grid{display:grid;grid-template-columns:236px minmax(320px,430px) minmax(0,1fr);gap:12px;align-items:start}
+.rv-grid>*{min-width:0}
+.rv-queue{display:flex;flex-direction:column;gap:12px}
+.rv-queue .panel{padding:10px}
+.gnow b{display:block;font-size:15px;overflow-wrap:anywhere}
+.gnow .cnt{font-size:22px;font-weight:650;line-height:1.2}
+.gnow .meter{margin:6px 0}
+.gnow .note-line{margin-top:8px}
+.glist{display:flex;flex-direction:column;gap:6px;font-size:12.5px;margin-top:6px}
+.glist .g{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:center}
+.glist .g .meter{grid-column:1/-1;height:4px}
+.glist .g.cur{font-weight:650}
+.glist .g span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.glist .g .n{color:var(--ink-3);font-variant-numeric:tabular-nums;font-weight:400}
+.trail{display:flex;flex-direction:column;gap:3px;font-size:12.5px}
+.trail .it{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:2px 4px;border-radius:4px}
+.trail .it>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trail .it.cur{background:var(--accent-wash);font-weight:650}
+.trail .it.done{color:var(--ink-3)}
+.trail .it .r{font-size:11px;white-space:nowrap}
+.trail .it .r.bad{color:var(--crit-ink);font-weight:650}
+.rv-form{padding:14px;display:flex;flex-direction:column;gap:12px}
+.rv-form .banner{margin-bottom:0}
+.rv-form h2{font-size:16px;font-weight:650;overflow-wrap:anywhere;line-height:1.3}
+.rv-path{display:flex;flex-wrap:wrap;gap:1px 4px;align-items:center;font-size:12.5px;color:var(--ink-3)}
+.rv-path button{border:0;background:transparent;padding:0;color:var(--ink-2);cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-2);text-underline-offset:2px}
+.rv-path button:hover{color:var(--accent)}
+.rv-facts{display:flex;flex-wrap:wrap;gap:2px 14px;font-size:12.5px;color:var(--ink-2)}
+.rv-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.note-line{font-size:12.5px;padding:6px 9px;border-radius:4px;background:var(--accent-wash)}
+.note-line.warn{background:var(--warn-wash);color:var(--warn-ink);font-weight:600}
+.tokens{display:flex;flex-wrap:wrap;gap:4px;align-items:center;border:1px solid var(--line-2);border-radius:var(--r);padding:3px 6px;background:var(--panel);position:relative}
+.tokens:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.tokens input{border:0;padding:3px 2px;flex:1 1 90px;width:auto;min-width:60px;background:transparent}
+.tokens input:focus{outline:0}
+.tokens .tag{font-size:12px;padding:1px 2px 1px 6px;display:inline-flex;align-items:center;gap:2px}
+.tokens .tag button{border:0;background:transparent;cursor:pointer;padding:0 4px;color:var(--ink-3);font-size:13px;line-height:1}
+.suggest{position:absolute;left:-1px;right:-1px;top:calc(100% + 4px);z-index:20;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);box-shadow:var(--shadow);max-height:220px;overflow:auto}
+.suggest .opt{display:flex;gap:10px;padding:5px 8px;cursor:pointer;font-size:13px;align-items:baseline}
+.suggest .opt b{font-family:var(--font-fs);font-size:12px;min-width:52px}
+.suggest .opt span{color:var(--ink-2)}
+.suggest .opt.hi{background:var(--accent-wash)}
+.rv-preview{display:flex;flex-direction:column;min-height:540px}
+.pv-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12.5px;color:var(--ink-2)}
+.pv-body{padding:12px;min-height:0;flex:1}
+.rv-keys{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--ink-2);margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.rv-keys span{white-space:nowrap}
+.demo{border:1px dashed var(--line-2);border-radius:var(--r);padding:6px 9px;font-size:12.5px;color:var(--ink-2);display:flex;gap:8px;align-items:center}
+.builder{padding:14px;margin-bottom:12px;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+.builder>*{min-width:0}
+.brow{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:10px}
+.keychip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line-2);border-radius:var(--r);padding:2px 4px 2px 9px;background:var(--panel)}
+.keychip button{border:0;background:transparent;cursor:pointer;padding:0 4px;color:var(--ink-2)}
+.keychip button:disabled{opacity:.3;cursor:default}
+.bprev{font-size:13px}
+.bprev ol{margin:6px 0;padding-left:20px;display:flex;flex-direction:column;gap:2px}
+.done-panel{padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+.done-panel h2{font-size:20px}
+@media (max-width:1439px){
+  .rv-grid{grid-template-columns:minmax(300px,400px) minmax(0,1fr)}
+  .rv-queue{grid-column:1/-1;flex-direction:row;flex-wrap:wrap}
+  .rv-queue>.panel{flex:1 1 240px}
+}
+@media (max-width:780px){
+  .rv-grid{grid-template-columns:minmax(0,1fr)}
+  .rv-preview{order:1;min-height:0}
+  .rv-form{order:2}
+  .rv-queue{order:3}
+  .builder{grid-template-columns:minmax(0,1fr)}
+}
+
+/* dialogs, states, misc */
+dialog{border:1px solid var(--line-2);border-radius:10px;background:var(--panel);color:var(--ink);padding:0;width:min(560px,calc(100vw - 32px));box-shadow:var(--shadow)}
+dialog::backdrop{background:var(--veil)}
+.dlg{padding:18px;display:flex;flex-direction:column;gap:12px}
+.dlg h2{font-size:17px;font-weight:650}
+.opt-card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding:9px 11px;border:1px solid var(--line-2);border-radius:var(--r);cursor:pointer}
+.opt-card:has(input:checked){border-color:var(--accent);background:var(--accent-wash)}
+.opt-card input{grid-row:1/4;margin-top:3px}
+.opt-card b{font-weight:650}
+.opt-card span{grid-column:2;font-size:13px;color:var(--ink-2)}
+.opt-card .tm{color:var(--ink);font-variant-numeric:tabular-nums}
+.dlg-f{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;align-items:center}
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
+.gallery .panel{padding:14px;display:flex;flex-direction:column;gap:8px}
+.gallery h3{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:650}
+.code{font-family:var(--font-fs);font-size:12px;background:var(--sunken);padding:6px 8px;border-radius:4px;overflow-wrap:anywhere}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom, 0px) + 18px);background:var(--ink);color:var(--page);padding:8px 14px;border-radius:var(--r);box-shadow:var(--shadow);z-index:70;max-width:calc(100vw - 32px);font-size:13px}
+</style>
+
+<div class="shell">
+  <header class="top">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect class="lg-a" x="3" y="3" width="16" height="7" rx="1.5"/><rect class="lg-b" x="3" y="12" width="16" height="7" rx="1.5"/></svg>
+      <span>Reflecting Pool</span>
+      <span class="mock">mockup with invented data</span>
+    </div>
+    <div class="top-r">
+      <span class="idx" id="idx-chip"><i></i><span id="idx-text"></span></span>
+      <button class="btn small" type="button" id="scan-btn">Scan now</button>
+      <label for="app-state">Try a state
+        <select id="app-state">
+          <option value="normal">Normal</option>
+          <option value="stale">Index is stale</option>
+          <option value="readonly">Read-only mode</option>
+        </select>
+      </label>
+    </div>
+  </header>
+  <div id="banner"></div>
+  <div class="body">
+    <nav class="rail" id="rail" aria-label="Screens"></nav>
+    <main id="view"></main>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
+
+<dialog id="scan-dlg" aria-labelledby="scan-dlg-t">
+  <form class="dlg" id="scan-form">
+    <h2 id="scan-dlg-t">Start a scan</h2>
+    <p class="muted">A scan reads names, sizes and dates only. Whichever you pick, every disk in the pool is used, because that information is spread across all of them. The choice is how hard the disks work and for how long. You keep browsing the last index until the scan finishes.</p>
+    <label class="opt-card"><input type="radio" name="intensity" value="low" id="scan-low"><b>Low impact</b><span class="tm">About 1 hour</span><span>One folder at a time, with pauses. Streaming, backups and other work on the server are not slowed. The disks stay active the whole time.</span></label>
+    <label class="opt-card"><input type="radio" name="intensity" value="balanced" id="scan-balanced"><b>Balanced</b><span class="tm">About 10 to 15 minutes</span><span>A few folders at a time. The disks are busy and the server stays responsive.</span></label>
+    <label class="opt-card"><input type="radio" name="intensity" value="aggressive" id="scan-aggressive"><b>Aggressive</b><span class="tm">About 1 to 4 minutes</span><span>As many folders at once as the server allows. Every disk works flat out, so other disk work slows down until it finishes.</span></label>
+    <p class="hint" id="scan-last"></p>
+    <div class="dlg-f">
+      <button class="btn" type="button" id="scan-cancel">Cancel</button>
+      <button class="btn primary" type="submit">Start scan <span class="kbd">Enter</span></button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+'use strict';
+
+/* ------------------------------------------------------------------ helpers */
+
+function add(el, c) {
+  if (c === null || c === undefined || c === false || c === true) return;
+  if (Array.isArray(c)) { for (var i = 0; i < c.length; i++) add(el, c[i]); return; }
+  el.appendChild(c instanceof Node ? c : document.createTextNode(String(c)));
+}
+function setKids(el, kids) { el.replaceChildren(); add(el, kids); return el; }
+
+/* h('div', {class: 'x', onclick: fn, style: {width: '50%'}}, child, ...) */
+function h(tag, props) {
+  var el = document.createElement(tag);
+  if (props) {
+    for (var k in props) {
+      if (!Object.prototype.hasOwnProperty.call(props, k)) continue;
+      var v = props[k];
+      if (v === null || v === undefined || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k === 'style') { for (var s in v) el.style.setProperty(s, String(v[s])); }
+      else if (k.charAt(0) === 'o' && k.charAt(1) === 'n') el.addEventListener(k.slice(2), v);
+      else if (k === 'value') el.value = v;
+      else if (k === 'checked' || k === 'disabled' || k === 'hidden') el[k] = !!v;
+      else el.setAttribute(k, v === true ? '' : String(v));
+    }
+  }
+  for (var i = 2; i < arguments.length; i++) add(el, arguments[i]);
+  return el;
+}
+
+function sv(tag, attrs) {
+  var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) {
+    for (var k in attrs) {
+      if (attrs[k] !== null && attrs[k] !== undefined && attrs[k] !== false) el.setAttribute(k, String(attrs[k]));
+    }
+  }
+  for (var i = 2; i < arguments.length; i++) add(el, arguments[i]);
+  return el;
+}
+
+function icon(kind) {
+  var d = kind === 'dir' ? 'M1.5 4.5v8h13v-7h-6l-1.5-2h-5.5z' : 'M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3';
+  return sv('svg', { viewBox: '0 0 16 16', width: 14, height: 14, 'aria-hidden': 'true', 'class': 'ico' }, sv('path', { d: d }));
+}
+
+function setOf(list) { var o = {}; list.split(' ').forEach(function (e) { o[e] = true; }); return o; }
+function pad(n, w) { var s = String(n); while (s.length < w) s = '0' + s; return s; }
+
+var KiB = 1024, MiB = KiB * 1024, GiB = MiB * 1024, TiB = GiB * 1024, DAY = 86400;
+/* A fixed "now" keeps the sample data stable whenever the mockup is opened. */
+var NOW = Date.UTC(2026, 9, 4, 12, 20, 0) / 1000;
+var CAPACITY = 20.8 * TiB;
+
+function fmtSize(b) {
+  if (b < KiB) return Math.round(b) + ' B';
+  var u = ['KiB', 'MiB', 'GiB', 'TiB'], v = b / KiB, i = 0;
+  while (v >= 1024 && i < 3) { v /= 1024; i++; }
+  return (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + ' ' + u[i];
+}
+function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+function fmtDate(ts) { return new Date(ts * 1000).toISOString().slice(0, 10); }
+function fmtAge(ts) {
+  var d = (NOW - ts) / DAY;
+  if (d < 1) return 'today';
+  if (d < 2) return 'yesterday';
+  if (d < 60) return Math.round(d) + ' days ago';
+  if (d < 730) return Math.round(d / 30.44) + ' months ago';
+  return (d / 365.25).toFixed(1).replace('.0', '') + ' years ago';
+}
+function pct(v, total) {
+  if (!(total > 0)) return '0%';
+  var p = v / total * 100;
+  if (p > 0 && p < 0.1) return '<0.1%';
+  return p.toFixed(1) + '%';
+}
+function dayStamp(daysAgo, sep) { return new Date((NOW - daysAgo * DAY) * 1000).toISOString().slice(0, 10).split('-').join(sep); }
+
+/* ------------------------------------------------------------- sample data */
+
+var EXT = {};
+function reg(type, list) { list.split(' ').forEach(function (e) { if (!EXT[e]) EXT[e] = type; }); }
+reg('video', 'mkv mp4 m4v avi mov wmv flv webm mpg mpeg m2ts ts vob ogv 3gp divx');
+reg('audio', 'mp3 flac wav aac ogg opus m4a m4b wma alac aiff ape dsf mka');
+reg('image', 'jpg jpeg png gif bmp tif tiff webp heic heif avif svg ico psd raw cr2 cr3 nef arw dng orf rw2');
+reg('document', 'pdf doc docx xls xlsx ppt pptx odt ods odp rtf epub mobi azw3 pages numbers key djvu');
+reg('archive', 'zip rar 7z tar gz tgz bz2 tbz2 xz txz zst lz4 lzma cab jar war r00 001');
+reg('disk-image', 'iso img vmdk vdi vhd vhdx qcow2 dmg bin cue nrg wim');
+reg('text', 'txt md log csv tsv json xml yaml yml toml ini conf cfg nfo html htm css js py go rs c h cpp java sh sql tex');
+reg('subtitle', 'srt ass ssa sub idx vtt sup');
+
+function classify(name) {
+  var i = name.lastIndexOf('.');
+  if (i <= 0 || i === name.length - 1 || name.length - i - 1 > 10) return ['', 'other'];
+  var ext = name.slice(i + 1).toLowerCase();
+  if (!/^[a-z0-9]+$/.test(ext)) return ['', 'other'];
+  return [ext, EXT[ext] || 'other'];
+}
+
+/* Colour classes: three hues plus a neutral. That is the largest set that stays apart for colour-blind readers when any two can touch. */
+var CLASSES = ['Video', 'Archives and disk images', 'Images', 'Everything else'];
+var TYPE_CLS = ['k-video', 'k-backup', 'k-image', 'k-other'];
+function classOf(type) { return type === 'video' ? 0 : (type === 'archive' || type === 'disk-image') ? 1 : type === 'image' ? 2 : 3; }
+var AGES = [['Under 6 months', 183], ['6 to 12 months', 365], ['1 to 2 years', 730], ['2 to 5 years', 1826], ['Over 5 years', Infinity]];
+var AGE_CLS = ['a-1', 'a-2', 'a-3', 'a-4', 'a-5'];
+function bucketOfDays(d) { for (var i = 0; i < AGES.length; i++) { if (d < AGES[i][1]) return i; } return AGES.length - 1; }
+
+var nodes = [];
+function byId(id) { return nodes[id - 1]; }
+function mk(parent, name, kind) {
+  var n = { id: nodes.length + 1, parent: parent || null, name: name, kind: kind, children: [], size: 0, disk: 0, files: 0, dirs: 0,
+    mtime: NOW, btime: NOW, maxM: 0, ext: '', type: kind === 'dir' ? 'folder' : 'other', nlink: 1, counted: true, share: null, rest: null,
+    tc: [0, 0, 0, 0], ab: [0, 0, 0, 0, 0] };
+  nodes.push(n);
+  if (parent) parent.children.push(n);
+  return n;
+}
+function D(parent, name, ageDays) { var n = mk(parent, name, 'dir'); n.mtime = NOW - (ageDays || 0) * DAY; n.btime = n.mtime; return n; }
+var RATIO = { video: 1, audio: 1, image: 0.99, document: 0.93, archive: 1, 'disk-image': 0.7, text: 0.34, subtitle: 0.4, other: 0.86 };
+function F(parent, name, size, ageDays, o) {
+  var n = mk(parent, name, 'file'); o = o || {};
+  var c = classify(name); n.ext = c[0]; n.type = c[1];
+  n.size = Math.max(1, Math.round(size));
+  n.disk = Math.round(n.size * (o.ratio === undefined ? RATIO[n.type] : o.ratio));
+  n.mtime = NOW - ageDays * DAY;
+  n.btime = NOW - (o.added === undefined ? ageDays : o.added) * DAY;
+  if (o.nlink) n.nlink = o.nlink;
+  if (o.counted === false) n.counted = false;
+  if (o.gone) n.gone = true;
+  if (o.hevc) n.hevc = true;
+  if (o.suggest) n.suggest = o.suggest;
+  return n;
+}
+/* R: the children this mockup does not generate one by one. They count in every total. */
+function R(dir, o) {
+  dir.rest = { count: o.count, size: Math.round(o.size), disk: Math.round(o.size * (o.ratio === undefined ? 1 : o.ratio)),
+    files: o.files === undefined ? o.count : o.files, dirs: o.dirs || 0, cls: o.cls, age: o.age,
+    newest: o.newest === undefined ? o.age : o.newest, what: o.what || 'items' };
+  return dir;
+}
+
+var seed = 20261004;
+function rnd() {
+  var t = seed += 0x6D2B79F5;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function between(a, b) { return a + rnd() * (b - a); }
+
+var root = D(null, '/mnt/tank', 0);
+
+/* media */
+var media = D(root, 'media', 0);
+var movies = D(media, 'movies', 2);
+function movie(title, year, gib, ext, tag, age, o) {
+  var d = D(movies, title + ' (' + year + ')', age);
+  var f = F(d, title + ' (' + year + ') [' + tag + '].' + ext, gib * GiB, age, o);
+  if (year % 2 === 0) F(d, title + ' (' + year + ').en.srt', between(60, 140) * KiB, age);
+  if (year % 3 !== 0) F(d, 'poster.jpg', between(300, 900) * KiB, age);
+  return f;
+}
+movie('The Lantern Coast', 2019, 78.4, 'mkv', '2160p Remux', 412, { hevc: true });
+movie('Glass Orchard', 2021, 58.9, 'mp4', '2160p', 230);
+movie('Copper Meridian', 2015, 54.1, 'mkv', '2160p Remux', 1310, { hevc: true, gone: true });
+[['Paper Satellites', 2017], ['Low Tide Radio', 2009], ['Salt and Signal', 2022], ['A Quiet Atlas', 2011], ['Iron Lighthouse', 2004],
+ ['Amber Station', 2018], ['Hollow Parade', 2013], ['Northern Canal', 2001], ['Silver Foundry', 2020], ['Winter Almanac', 2016],
+ ['Ember Circuit', 2023], ['Distant Weather', 2020], ['Velvet Garden', 1999], ['Marble Archive', 2014], ['The Last Cartographer', 2008],
+ ['Second Harvest', 2024], ['Nine Bridges', 2006], ['Blue Hour Ferry', 2012], ['Static Bloom', 2025], ['The Long Portage', 2010],
+ ['Kite Season', 2012]].forEach(function (m, i) {
+  var uhd = i % 6 === 2;
+  var gib = uhd ? 46.2 - i * 0.9 : 17.9 - (i % 9) * 1.31 - i * 0.12;
+  movie(m[0], m[1], gib, i % 7 === 4 ? 'mp4' : 'mkv', uhd ? '2160p' : '1080p', 60 + (i * 211) % 2600, { hevc: uhd });
+});
+R(movies, { count: 58, size: 0.52 * TiB, files: 150, dirs: 58, cls: 0, age: 900, newest: 4, what: 'folders' });
+
+var tv = D(media, 'tv', 1);
+['Night Harbor', 'Foxglove Lane', 'The Understudy', 'Signal Hill', 'Tidewater County', 'Glasshouse', 'Meridian Line', 'Small Hours'].forEach(function (name, si) {
+  var show = D(tv, name, 20 + si * 90);
+  for (var s = 1; s <= 2; s++) {
+    var season = D(show, 'Season ' + pad(s, 2), 0);
+    var age = 30 + si * 170 + (2 - s) * 365;
+    for (var e = 1; e <= 6; e++) F(season, name + ' - S' + pad(s, 2) + 'E' + pad(e, 2) + '.mkv', between(1.1, 3.9) * GiB, Math.max(1, age - e * 7));
+  }
+  if (si % 3 === 0) F(show, 'tvshow.nfo', 3.2 * KiB, 400);
+});
+R(tv, { count: 22, size: 0.75 * TiB, files: 1480, dirs: 96, cls: 0, age: 600, newest: 1, what: 'folders' });
+
+var music = D(media, 'music', 12);
+[['Hollow Parade', 'Northern Lights Motel'], ['Mara Venn', 'Salt Hymns'], ['The Quiet Atlas', 'Field Recordings Vol. 2']].forEach(function (a, ai) {
+  var album = D(D(music, a[0], 300), a[1], 300 + ai * 400);
+  for (var t = 1; t <= 6; t++) F(album, pad(t, 2) + ' - Track ' + pad(t, 2) + '.flac', between(22, 48) * MiB, 300 + ai * 400);
+  F(album, 'cover.jpg', 1.4 * MiB, 300 + ai * 400);
+});
+R(music, { count: 318, size: 0.12 * TiB, files: 9200, dirs: 720, cls: 3, age: 1500, newest: 12, what: 'folders' });
+
+var torrents = D(media, 'torrents', 0);
+var tdone = D(torrents, 'complete', 0);
+F(tdone, 'a8f3e2c1-9b4d-4f6a-8c2e-1d7b5a903f44.mkv', 22.6 * GiB, 96, { suggest: 'Unidentified film download, June 2026' });
+F(tdone, 'Paper.Satellites.2017.1080p.BluRay.x264-GRP.mkv', 17.9 * GiB, 320, { nlink: 2, counted: false });
+F(tdone, 'Night.Harbor.S02E03.1080p.WEB.h264-GRP.mkv', 2.4 * GiB, 44, { nlink: 2, counted: false });
+F(tdone, 'Kite.Season.2012.720p.x264-OLD.avi', 4.4 * GiB, 2380);
+F(tdone, 'xk29_final_FINAL(2).mp4', 9.8 * GiB, 610, { suggest: 'Untitled video from the complete folder, 2025' });
+F(D(torrents, 'incomplete', 0), 'Distant.Weather.2020.2160p.mkv.part', 31.2 * GiB, 512, { ratio: 0.41 });
+
+/* backups */
+var backups = D(root, 'backups', 0);
+var proxmox = D(backups, 'hypervisor', 0);
+var pve = D(proxmox, 'dump', 0);
+[101, 102, 110].forEach(function (vm, vi) {
+  for (var d = 0; d < 4; d++) F(pve, 'vzdump-qemu-' + vm + '-' + dayStamp(d + 1, '_') + '-01_00_0' + (vi + 2) + '.vma.zst', (22 - vi * 7 - d * 0.3) * GiB, d + 1);
+});
+var borg = D(D(backups, 'laptops', 0), 'maren-thinkpad.borg', 0);
+F(borg, 'borg-prune.log', 2.1 * GiB, 0.4);
+F(borg, 'index.48213', 0.6 * GiB, 0.4, { ratio: 0.9 });
+F(borg, 'hints.48213', 212 * MiB, 0.4);
+F(borg, 'config', 0.9 * KiB, 1480);
+F(borg, 'README', 73, 1480);
+R(D(borg, 'data', 0), { count: 96400, size: 130 * GiB, cls: 3, age: 500, newest: 0.4, what: 'files' });
+var bands = D(D(D(backups, 'timemachine', 0), 'Jonas MacBook.sparsebundle', 0), 'bands', 0);
+for (var bi = 0; bi < 40; bi++) F(bands, (0x1a40 + bi * 37).toString(16), 8 * MiB, 3 + (bi * 13) % 500);
+R(bands, { count: 24960, size: 150 * GiB, cls: 3, age: 420, newest: 3, what: 'files' });
+var dbs = D(backups, 'databases', 0);
+for (var di = 0; di < 8; di++) F(dbs, 'nextcloud-' + dayStamp(di + 1, '-') + '.sql.gz', (3.1 - di * 0.01) * GiB, di + 1);
+R(dbs, { count: 22, size: 68 * GiB, cls: 1, age: 60, newest: 9, what: 'files' });
+F(backups, 'photos-offsite-2019.tar', 96 * GiB, 2610);
+var oldnas = D(backups, 'old-nas-rsync', 2900);
+F(oldnas, 'RESTORE-NOTES.txt', 2.1 * KiB, 2900);
+R(oldnas, { count: 31200, size: 118 * GiB, ratio: 0.8, files: 31200, dirs: 2840, cls: 3, age: 3100, newest: 2900, what: 'items' });
+R(D(backups, 'phone-sync', 2), { count: 18300, size: 44 * GiB, cls: 2, age: 400, newest: 2, what: 'files' });
+
+/* photos */
+var photos = D(root, 'photos', 0);
+var lofoten = null;
+for (var y = 2012; y <= 2026; y++) {
+  var yd = D(photos, String(y), (2026 - y) * 365 + 20);
+  if (y === 2024) {
+    lofoten = D(yd, '2024-07 Lofoten', 800);
+    for (var pi = 0; pi < 8; pi++) {
+      F(lofoten, 'DSC0' + (1293 + pi) + '.ARW', between(46, 51) * MiB, 800);
+      F(lofoten, 'DSC0' + (1293 + pi) + '.JPG', between(9, 13) * MiB, 800);
+    }
+  }
+  if (y === 2019) {
+    var dump = D(yd, 'phone-dump', 2600);
+    for (var qi = 0; qi < 6; qi++) F(dump, 'IMG_20190704_14' + (2233 + qi * 61) + '.jpg', between(3, 6) * MiB, 2640, { added: 2600 });
+    F(dump, 'VID_20190704_WA0007.mp4', 212 * MiB, 2640, { added: 2600 });
+  }
+  R(yd, { count: 40 + (y - 2012) * 3, size: (6 + (y - 2012) * 1.6) * GiB, files: 4200 + (y - 2012) * 300, dirs: 40 + (y - 2012) * 3, cls: 2,
+    age: (2026 - y) * 365 + 120, newest: (2026 - y) * 365 + 20, what: 'folders' });
+}
+var pexports = D(photos, 'exports', 400);
+F(pexports, 'wedding-film-final-v3.mov', 18.4 * GiB, 1890);
+F(pexports, 'wedding-film-final-v2.mov', 18.1 * GiB, 1893);
+F(pexports, 'calendar-2025-print.pdf', 184 * MiB, 660);
+var lrc = D(photos, 'Lightroom Catalog Backups', 30);
+for (var zi = 0; zi < 5; zi++) F(lrc, 'catalog-' + dayStamp(30 + zi * 30, '-') + '.zip', 1.2 * GiB, 30 + zi * 30);
+
+/* surveillance: one folder with a very large number of small files */
+var cams = D(root, 'surveillance', 0);
+var nvr = D(cams, 'nvr', 0);
+var clips = D(nvr, 'clips', 0);
+var CAMS = ['front-door', 'driveway', 'garden', 'garage'];
+for (var ci = 0; ci < 60; ci++) {
+  F(clips, CAMS[ci % 4] + '-' + (1759500000 + ci * 9173) + '.' + pad((ci * 7919) % 1000000, 6) + '-' + ((ci * 2654435761) >>> 0).toString(36).slice(0, 6) + '.mp4',
+    (9.4 - ci * 0.1) * MiB, (ci * 3) % 60 + 0.2);
+}
+R(clips, { count: 395940, size: 70 * GiB, cls: 0, age: 30, newest: 0.1, what: 'files' });
+var rec = D(nvr, 'recordings', 0);
+['2026-10', '2026-09', '2026-08', '2026-07'].forEach(function (m, mi) {
+  R(D(rec, m, mi * 30), { count: 30, size: (mi === 0 ? 6 : 42) * GiB, files: 9600, dirs: 750, cls: 0, age: mi * 30 + 10, newest: mi * 30, what: 'folders' });
+});
+F(D(cams, 'exports', 200), 'driveway-2026-03-14-incident.mp4', 1.8 * GiB, 204);
+
+/* vms: a share dominated by a few huge files, where apparent and on-disk size differ most */
+var vms = D(root, 'vms', 0);
+F(vms, 'win11-gaming.qcow2', 120 * GiB, 1, { ratio: 0.71 });
+F(vms, 'docker-host.img', 60 * GiB, 0.1, { ratio: 0.61 });
+F(vms, 'ubuntu-lab.qcow2', 40 * GiB, 190, { ratio: 0.37 });
+F(vms, 'old-win10-backup.vhdx', 38 * GiB, 1930, { ratio: 0.88 });
+F(vms, 'homeassistant.qcow2', 32 * GiB, 0.1, { ratio: 0.33 });
+F(D(vms, 'nvram', 300), '3f1c2a9e-77b0-4c1d-9a55-0e4f6d2b8c13_VARS-pure-efi.fd', 128 * KiB, 300);
+
+var isos = D(root, 'isos', 60);
+[['debian-13.1.0-amd64-netinst.iso', 0.78, 120], ['ubuntu-26.04-live-server-amd64.iso', 3.1, 150], ['Win11_24H2_English_x64.iso', 5.4, 640],
+ ['virtio-win-0.1.262.iso', 0.7, 480], ['hypervisor-8.4-1.iso', 1.6, 500], ['recovery-usb-2023.img', 14.9, 1100],
+ ['Fedora-Workstation-Live-42.iso', 2.4, 390], ['memtest-usb.img', 0.5, 2100], ['office-install-2016.iso', 3.9, 3300],
+ ['macOS-installer.dmg', 13.1, 800], ['gparted-live-1.6.0.iso', 0.55, 700], ['firewall-2.7.2-amd64.iso', 0.85, 610]].forEach(function (x) {
+  F(isos, x[0], x[1] * GiB, x[2], { ratio: 0.97 });
+});
+
+var docs = D(root, 'documents', 3);
+var taxes = D(docs, 'taxes', 200);
+for (var ty = 2019; ty <= 2025; ty++) {
+  var td = D(taxes, String(ty), (2026 - ty) * 365 - 100);
+  F(td, 'return-' + ty + '.pdf', between(1.2, 4.8) * MiB, (2026 - ty) * 365 - 100);
+  F(td, 'receipts-' + ty + '.zip', between(40, 260) * MiB, (2026 - ty) * 365 - 100);
+}
+var scans = D(docs, 'scans', 14);
+['scan0041.pdf', 'scan0042.pdf', 'scan0043.pdf', 'SCN_0007.pdf', 'Scan 12 Mar 2024.pdf', 'doc20240919141502.pdf'].forEach(function (nm, i) {
+  F(scans, nm, between(0.4, 9) * MiB, 14 + i * 97, i === 2 ? { suggest: 'Boiler service report, March 2026' } : undefined);
+});
+var house = D(docs, 'house', 90);
+F(house, 'floorplan-ground.pdf', 6.2 * MiB, 1500);
+F(house, 'boiler-manual.pdf', 14.8 * MiB, 2200);
+F(house, 'insurance-policy-2026.pdf', 0.9 * MiB, 90);
+F(house, 'renovation-quotes.xlsx', 88 * KiB, 420);
+R(docs, { count: 14, size: 14 * GiB, ratio: 0.85, files: 12400, dirs: 1150, cls: 3, age: 900, newest: 3, what: 'folders' });
+
+var dl = D(root, 'downloads', 0);
+F(dl, 'x7Gq2LmP.zip', 6.2 * GiB, 730, { suggest: 'Unidentified archive, October 2024' });
+F(dl, 'ubuntu-24.04.1-desktop-amd64.iso', 5.8 * GiB, 760);
+F(dl, 'setup(1).exe', 412 * MiB, 1210);
+F(dl, 'IMG-20230812-WA0031.jpg', 284 * KiB, 1150);
+F(dl, '5f2b9c0e7a1d4e83b6c2f09a8d7e6b51', 3.3 * GiB, 905, { suggest: 'Unidentified download, April 2024' });
+F(dl, 'invoice_48213_final.pdf', 212 * KiB, 300);
+F(dl, 'backup.tar.gz', 21.0 * GiB, 1480);
+F(dl, 'Untitled.mov', 12.4 * GiB, 980);
+var nf = D(dl, 'New Folder (3)', 1300);
+F(nf, 'IMG_0412.HEIC', 2.9 * MiB, 1300);
+F(nf, 'IMG_0413.HEIC', 3.1 * MiB, 1300);
+F(nf, 'notes.txt', 1.4 * KiB, 1300);
+R(D(dl, 'tmp-unpack', 420), { count: 20480, size: 24 * GiB, files: 20480, dirs: 310, cls: 3, age: 420, what: 'items' });
+R(dl, { count: 412, size: 31 * GiB, files: 3900, dirs: 96, cls: 3, age: 800, newest: 0.3, what: 'items' });
+
+var appdata = D(root, 'appdata', 0);
+var mserver = D(appdata, 'mediaserver', 0);
+R(D(D(mserver, 'Library', 0), 'Metadata', 0), { count: 238000, size: 21 * GiB, ratio: 0.8, files: 140000, dirs: 98000, cls: 2, age: 300, newest: 0.2, what: 'items' });
+R(D(mserver, 'Cache', 0), { count: 9400, size: 3.2 * GiB, cls: 3, age: 20, newest: 0.1, what: 'files' });
+R(D(appdata, 'postgres14', 0), { count: 2140, size: 6.2 * GiB, ratio: 0.6, cls: 3, age: 5, newest: 0.05, what: 'files' });
+R(D(appdata, 'tv-manager-v2-old', 1240), { count: 8120, size: 2.3 * GiB, ratio: 0.6, cls: 3, age: 1400, newest: 1240, what: 'files' });
+R(D(appdata, 'paperless', 0), { count: 31200, size: 9.8 * GiB, ratio: 0.9, cls: 3, age: 200, newest: 0.3, what: 'files' });
+var selfdir = D(appdata, 'reflectingpool', 0); selfdir.excluded = true;
+
+var home = D(root, 'home', 0);
+['maren', 'jonas'].forEach(function (u, ui) {
+  var ud = D(home, u, ui * 3);
+  R(D(ud, 'Documents', 4), { count: 6840, size: (14 + ui * 6) * GiB, ratio: 0.78, files: 6200, dirs: 640, cls: 3, age: 700, newest: 4, what: 'items' });
+  R(D(ud, 'Desktop', 9), { count: 334, size: 2 * GiB, ratio: 0.9, files: 310, dirs: 24, cls: 3, age: 200, newest: 9, what: 'items' });
+  R(D(ud, 'Projects', 2), { count: 20700, size: (22 + ui * 10) * GiB, ratio: 0.7, files: 14800, dirs: 5900, cls: 3, age: 500, newest: 2, what: 'items' });
+});
+R(D(home, 'guest', 2300), { count: 310, size: 6 * GiB, files: 310, cls: 3, age: 2500, newest: 2300, what: 'files' });
+
+R(D(root, 'software', 300), { count: 640, size: 18 * GiB, files: 5100, dirs: 420, cls: 1, age: 1700, newest: 300, what: 'items' });
+var scratch = D(root, 'scratch', 0);
+F(scratch, 'render-test-0001-0900.tar', 28 * GiB, 55);
+F(scratch, 'transcode-tmp.mkv', 14 * GiB, 12);
+F(scratch, 'dataset-sample.csv', 9.6 * GiB, 240);
+F(scratch, 'core.48213', 6.1 * GiB, 610, { ratio: 0.22 });
+R(D(root, 'emulation', 400), { count: 2210, size: 52 * GiB, files: 12200, dirs: 380, cls: 1, age: 1900, newest: 400, what: 'items' });
+
+root.children.forEach(function (s) { (function mark(n) { n.share = s; n.children.forEach(mark); })(s); });
+
+function roll(n) {
+  if (n.kind !== 'dir') {
+    n.maxM = Math.max(n.mtime, n.btime);
+    if (n.counted) { n.tc[classOf(n.type)] = n.size; n.ab[bucketOfDays((NOW - n.maxM) / DAY)] = n.size; }
+    return;
+  }
+  var size = 0, disk = 0, files = 0, dirs = 0, maxM = 0, tc = [0, 0, 0, 0], ab = [0, 0, 0, 0, 0], i, j;
+  for (i = 0; i < n.children.length; i++) {
+    var c = n.children[i];
+    roll(c);
+    if (c.kind === 'dir') { dirs += 1 + c.dirs; files += c.files; size += c.size; disk += c.disk; }
+    else { files += 1; if (c.counted) { size += c.size; disk += c.disk; } }
+    if (c.maxM > maxM) maxM = c.maxM;
+    for (j = 0; j < 4; j++) tc[j] += c.tc[j];
+    for (j = 0; j < 5; j++) ab[j] += c.ab[j];
+  }
+  if (n.rest) {
+    var r = n.rest;
+    size += r.size; disk += r.disk; files += r.files; dirs += r.dirs;
+    tc[r.cls] += r.size; ab[bucketOfDays(r.age)] += r.size;
+    if (NOW - r.newest * DAY > maxM) maxM = NOW - r.newest * DAY;
+  }
+  n.size = size; n.disk = disk; n.files = files; n.dirs = dirs; n.maxM = maxM || n.mtime; n.tc = tc; n.ab = ab;
+}
+roll(root);
+var TOTAL_ITEMS = root.files + root.dirs;
+
+/* ------------------------------------------------------------------- state */
+
+var MODE = {
+  low: { name: 'Low impact', rate: 310, secs: 3500, took: '58 min', demo: 40 },
+  balanced: { name: 'Balanced', rate: 1480, secs: 760, took: '12 min 40 s', demo: 20 },
+  aggressive: { name: 'Aggressive', rate: 5800, secs: 192, took: '3 min 12 s', demo: 8 }
+};
+var state = { screen: 'overview', sizeMode: 'disk', app: 'normal', snap: 'none',
+  scan: { running: false, pct: 0, mode: 'balanced', last: 'balanced', lastLabel: 'today 03:04', lastMode: 'low impact', lastTook: '58 min' } };
+var SCREENS = {};
+var view = document.getElementById('view');
+var scanDlg = document.getElementById('scan-dlg');
+
+function sz(n) { return state.sizeMode === 'disk' ? n.disk : n.size; }
+function ageDays(n) { return (NOW - n.maxM) / DAY; }
+function modOf(n) { return n.kind === 'dir' ? n.maxM : n.mtime; }
+function relPath(n) { var parts = [], p = n; while (p && p !== root) { parts.push(p.name); p = p.parent; } return parts.reverse().join('/'); }
+function parentPath(n) { if (!n.parent) return ''; var r = relPath(n.parent); return 'tank/' + (r ? r + '/' : ''); }
+function isUnder(n, anc) { var p = n.parent; while (p) { if (p === anc) return true; p = p.parent; } return false; }
+function kindLabel(n) {
+  if (n === root) return 'Pool';
+  if (n.kind === 'dir') return n.share === n ? 'Share (dataset)' : 'Folder';
+  return n.type + ' file' + (n.ext ? ', .' + n.ext : '');
+}
+
+/* Snapshot figures. The default matches a pool with no snapshots; the Storage screen can switch them on. */
+var SNAPS = { media: [0.9 * GiB, 14], backups: [86 * GiB, 42], photos: [4.1 * GiB, 14], documents: [9 * GiB, 60], appdata: [31 * GiB, 28], home: [18 * GiB, 60], vms: [96 * GiB, 7] };
+function snapOf(share) {
+  var s = share ? SNAPS[share.name] : null;
+  if (state.snap !== 'some' || !s) return { bytes: 0, count: 0 };
+  return { bytes: s[0], count: s[1] };
+}
+function snapTotal() { var t = 0; root.children.forEach(function (s) { t += snapOf(s).bytes; }); return t; }
+
+/* Annotations: what PUT /api/entries/{id}/annotation stores. */
+var ann = new Map();
+var prefixes = [
+  { name: 'MEDIA', meaning: 'Managed by a media app. Do not rename by hand.' },
+  { name: 'BKP', meaning: 'Backup of something that lives elsewhere.' },
+  { name: 'KEEP', meaning: 'Irreplaceable. Never delete.' },
+  { name: 'FAM', meaning: 'Family photos, videos and scans.' },
+  { name: 'TAX', meaning: 'Tax and finance records.' },
+  { name: 'TMP', meaning: 'Temporary. Fine to delete after its review date.' },
+  { name: 'SYS', meaning: 'Needed by a VM, a container or the server.' }
+];
+function blankAnn(skipped) { return { note: '', displayName: '', prefixes: [], owner: '', reviewAfter: '', skipped: !!skipped }; }
+function setAnn(n, o) { var a = blankAnn(false); for (var k in o) a[k] = o[k]; ann.set(n.id, a); }
+function hasContent(a) { return !!a && !a.skipped && !!(a.note || a.displayName || a.prefixes.length || a.owner || a.reviewAfter); }
+function described(n) { return hasContent(ann.get(n.id)); }
+/* An annotated folder covers what is inside it. As in the backend, a note on the share itself does not. */
+function coveredBy(n) { var p = n.parent; while (p && p !== root) { if (p !== p.share && described(p)) return p; p = p.parent; } return null; }
+function coveredBytes(n) {
+  if (n !== n.share && described(n)) return n.size;
+  var t = 0; for (var i = 0; i < n.children.length; i++) t += coveredBytes(n.children[i]);
+  return t;
+}
+function displayOr(n) { var a = ann.get(n.id); return a && a.displayName ? a.displayName : n.name; }
+
+setAnn(music, { note: 'Music library, ripped from our own CDs. One folder per artist.', prefixes: ['MEDIA', 'KEEP'], owner: 'jonas' });
+setAnn(proxmox, { note: 'Nightly VM backups from the hypervisor. It keeps 4 per VM and prunes the rest itself.', prefixes: ['BKP'], owner: 'maren', reviewAfter: '2027-04-01' });
+setAnn(taxes, { note: 'Tax returns and receipts by year. Keep for 10 years.', prefixes: ['TAX', 'KEEP'], owner: 'maren' });
+setAnn(lofoten, { note: 'Summer trip, raw files plus the edited JPGs.', prefixes: ['FAM'], owner: 'jonas' });
+setAnn(vms.children[0], { note: 'Gaming VM with the graphics card passed through.', prefixes: ['SYS'], owner: 'jonas' });
+setAnn(scans.children[0], { note: 'Signed lease for the garage.', displayName: 'Garage lease 2026 (signed)', prefixes: ['KEEP'] });
+setAnn(isos, { note: 'Installer images. All of these can be downloaded again.', prefixes: ['TMP'], reviewAfter: '2027-01-01' });
+ann.set(scratch.children[1].id, blankAnn(true));
+ann.set(dl.children[1].id, blankAnn(true));
+
+var toastTimer = 0;
+function toast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.hidden = true; }, 4500);
+}
+function guide(text) { return h('p', { 'class': 'guide' }, h('b', { text: 'Mockup note. ' }), text); }
+function selectEl(id, options, value, onchange) {
+  var s = h('select', { id: id });
+  options.forEach(function (o) { s.appendChild(h('option', { value: String(o[0]), text: o[1] })); });
+  s.value = String(value);
+  s.addEventListener('change', function () { onchange(s.value); });
+  return s;
+}
+function copyText(text, field) {
+  function fallback() { if (field) { field.focus(); field.select(); } toast('Select the text and copy it.'); }
+  try { navigator.clipboard.writeText(text).then(function () { toast('Copied.'); }, fallback); } catch (e) { fallback(); }
+}
+
+/* ---------------------------------------------------------------- previews */
+/* In the app these are the file itself from GET /api/entries/{id}/content. Here they are stand-ins. */
+
+var IMG_OK = setOf('jpg jpeg png gif webp avif bmp ico svg');
+var VID_OK = setOf('mp4 m4v webm mov mkv');
+var AUD_OK = setOf('mp3 flac wav ogg opus m4a aac');
+function previewKind(n) {
+  if (n.gone) return 'gone';
+  if (n.kind === 'dir') return 'folder';
+  if (IMG_OK[n.ext]) return n.size > 50 * MiB ? 'bigimage' : 'image';
+  if (n.type === 'video') return (VID_OK[n.ext] && !n.hevc) ? 'video' : 'novideo';
+  if (AUD_OK[n.ext]) return 'audio';
+  if (n.ext === 'pdf') return n.size > 150 * MiB ? 'bigpdf' : 'pdf';
+  if (n.type === 'text' || n.type === 'subtitle') return 'text';
+  return 'meta';
+}
+var PV_TITLE = { gone: 'Not on disk any more', folder: 'Folder contents', image: 'Image', bigimage: 'Large image', video: 'Video',
+  novideo: 'No preview for this video', audio: 'Audio', pdf: 'PDF', bigpdf: 'Large PDF', text: 'Text', meta: 'No preview for this type' };
+var WHY = { archive: 'Archives are not opened. Looking inside them is out of scope.', 'disk-image': 'Disk images are not opened.',
+  image: 'This browser cannot show this image format.', document: 'Only PDF documents can be shown in the browser.',
+  audio: 'This browser cannot play this audio format.' };
+
+function factsEl(n) {
+  var dl2 = h('dl', { 'class': 'facts' });
+  function row(k, v, on) { dl2.appendChild(h('dt', { text: k })); dl2.appendChild(h('dd', { 'class': on ? 'on' : null, text: v })); }
+  row('On disk', fmtSize(n.disk), state.sizeMode === 'disk');
+  row('Apparent', fmtSize(n.size), state.sizeMode !== 'disk');
+  if (n.kind === 'dir') row('Contains', fmtInt(n.files) + ' files in ' + fmtInt(n.dirs) + ' folders');
+  else row('Type', n.type + (n.ext ? ' (.' + n.ext + ')' : ''));
+  row('Changed', fmtAge(modOf(n)) + ' (' + fmtDate(modOf(n)) + ')');
+  if (n.kind !== 'dir') row('Added', fmtDate(n.btime));
+  if (n.nlink > 1) row('Links', n.nlink + ' names for one file. ' + (n.counted ? 'Its size is counted here.' : 'Its size is counted at the other name.') + ' Removing this name alone frees nothing.');
+  var cov = coveredBy(n);
+  if (cov) row('Covered by', 'tank/' + relPath(cov));
+  if (n.excluded) row('Scan', 'Not scanned (excluded)');
+  return dl2;
+}
+
+function scene(n) {
+  return sv('svg', { viewBox: '0 0 300 200', 'class': 'ph', role: 'img', 'aria-label': 'Sample picture standing in for ' + n.name, preserveAspectRatio: 'xMidYMid slice' },
+    sv('rect', { 'class': 'ph-sky', x: 0, y: 0, width: 300, height: 200 }),
+    sv('circle', { 'class': 'ph-sun', cx: 50 + (n.id * 37) % 200, cy: 50, r: 17 }),
+    sv('path', { 'class': 'ph-far', d: 'M0 150 L70 96 L130 140 L190 84 L300 150 L300 200 L0 200 Z' }),
+    sv('path', { 'class': 'ph-near', d: 'M0 172 L90 128 L170 166 L240 132 L300 160 L300 200 L0 200 Z' }));
+}
+
+function plainBar(v, total) {
+  var w = total > 0 ? Math.max(0, Math.min(100, v / total * 100)) : 0;
+  return h('div', { 'class': 'bar' }, h('div', { 'class': 'fill', style: { width: w.toFixed(2) + '%' } }, h('i', { 'class': 'k-plain', style: { 'flex-grow': '1' } })));
+}
+
+function miniList(dir, hl, onPeek, max) {
+  var kids = dir.children.slice().sort(function (a, b) { return sz(b) - sz(a) || a.id - b.id; });
+  var total = sz(dir), tb = h('tbody');
+  var shown = kids.slice(0, max);
+  if (hl && shown.length && shown.indexOf(hl) < 0 && kids.indexOf(hl) >= 0) shown[shown.length - 1] = hl;
+  shown.forEach(function (c) {
+    var tr = h('tr', { 'class': (c === hl ? 'hl' : '') + (onPeek ? ' peek' : '') },
+      h('td', null, h('span', { 'class': 'nm' }, icon(c.kind), h('span', { 'class': 'fs', text: c.name }))),
+      h('td', { 'class': 'b' }, plainBar(sz(c), total)),
+      h('td', { 'class': 's num', text: fmtSize(sz(c)) }));
+    if (onPeek) tr.addEventListener('click', function () { onPeek(c); });
+    tb.appendChild(tr);
+  });
+  var more = kids.length - shown.length + (dir.rest ? dir.rest.count : 0);
+  if (more > 0) tb.appendChild(h('tr', null, h('td', { colspan: '3', 'class': 'muted', text: 'and ' + fmtInt(more) + ' more' })));
+  return h('table', { 'class': 'mini' }, tb);
+}
+
+function sampleText(n) {
+  if (n.ext === 'log') {
+    return ['2026-10-04T03:10:02 INFO  prune: keeping 7 daily, 4 weekly, 12 monthly',
+      '2026-10-04T03:10:02 INFO  prune: maren-thinkpad-2026-09-26T21:00 kept (daily 7)',
+      '2026-10-04T03:10:03 INFO  prune: maren-thinkpad-2026-09-25T21:00 pruned',
+      '2026-10-04T03:10:41 INFO  compact: freed 1.84 GB in 212 segments',
+      '2026-10-04T03:10:41 INFO  done in 39.1 s',
+      '2026-10-03T03:10:02 INFO  prune: keeping 7 daily, 4 weekly, 12 monthly',
+      '2026-10-03T03:10:02 INFO  prune: maren-thinkpad-2026-09-25T21:00 kept (daily 7)',
+      '...'].join('\n');
+  }
+  if (n.ext === 'srt') return '1\n00:00:41,208 --> 00:00:43,877\nYou kept the lamp lit all winter.\n\n2\n00:00:44,120 --> 00:00:46,502\nSomebody had to.\n\n3\n00:00:51,040 --> 00:00:53,311\nThe boats stopped coming in March.\n';
+  if (n.ext === 'nfo') return '<?xml version="1.0" encoding="UTF-8"?>\n<tvshow>\n  <title>' + n.parent.name + '</title>\n  <season>-1</season>\n  <episode>-1</episode>\n  <status>Ended</status>\n</tvshow>\n';
+  if (n.ext === 'csv') return 'sample_id,captured_at,sensor,value\n1,2026-02-01T00:00:00Z,a1,0.4182\n2,2026-02-01T00:00:01Z,a1,0.4179\n3,2026-02-01T00:00:02Z,a1,0.4191\n4,2026-02-01T00:00:03Z,a2,1.2204\n...';
+  if (n.name === 'RESTORE-NOTES.txt') return 'Copied from the old NAS before it was retired (2018).\nNot checked against the new shares.\nMost of this should already be in photos/ and documents/.\n';
+  return 'Shopping list for the shed:\n- hinges\n- two tins of primer\n- 4 mm screws\n';
+}
+
+function preview(n, o) {
+  o = o || {};
+  var kind = o.force || previewKind(n), box = h('div', { 'class': 'pv-card' });
+  if (kind === 'gone') {
+    add(box, [h('div', { 'class': 'pv-msg crit' }, h('b', { text: 'This item is no longer where the last scan found it.' }),
+      'It was moved, renamed or deleted after the scan of ' + state.scan.lastLabel + '. Nothing can be recorded for it until a scan finds it again.'), factsEl(n)]);
+  } else if (kind === 'folder') {
+    add(box, [h('div', { 'class': 'pv-cap', text: fmtInt(n.files) + ' files in ' + fmtInt(n.dirs) + ' folders, ' + fmtSize(sz(n)) + '. Newest change ' + fmtAge(n.maxM) + '.' }),
+      miniList(n, o.highlight || null, o.onPeek || null, o.compact ? 6 : 40)]);
+  } else if (kind === 'bigimage' || kind === 'bigpdf') {
+    var holder = h('div', { 'class': 'pv-card' });
+    add(holder, [h('div', { 'class': 'pv-msg' }, h('b', { text: 'Large file: ' + fmtSize(n.size) + '.' }), 'It is not loaded until you ask.'),
+      h('div', null, h('button', { 'class': 'btn small', type: 'button', onclick: function () { holder.replaceWith(preview(n, { compact: o.compact, force: kind === 'bigimage' ? 'image' : 'pdf' })); } }, 'Load the preview'))]);
+    return holder;
+  } else if (kind === 'image') {
+    add(box, [scene(n), h('div', { 'class': 'pv-cap', text: 'Image, scaled to fit. Click for full size.' })]);
+  } else if (kind === 'video') {
+    var frame = h('div', { 'class': 'pv-video' }, scene(n));
+    var play = h('button', { 'class': 'play', type: 'button' }, 'Play');
+    play.addEventListener('click', function () { play.textContent = frame.classList.toggle('playing') ? 'Pause' : 'Play'; });
+    add(frame, [play, h('div', { 'class': 'vbar' }, h('i'))]);
+    add(box, [frame, h('div', { 'class': 'pv-cap', text: 'Video plays in place and streams by range request, so a ' + fmtSize(n.size) + ' file starts at once and nothing is downloaded up front.' })]);
+  } else if (kind === 'audio') {
+    var wave = h('div', { 'class': 'wave', 'aria-hidden': 'true' });
+    for (var i = 0; i < 90; i++) wave.appendChild(h('i', { style: { height: (8 + ((n.id * 31 + i * i * 7) % 34)) + 'px' } }));
+    var ap = h('button', { 'class': 'btn small', type: 'button' }, 'Play');
+    ap.addEventListener('click', function () { ap.textContent = ap.textContent === 'Play' ? 'Pause' : 'Play'; });
+    add(box, [h('div', { 'class': 'pv-audio' }, ap, wave, h('span', { 'class': 'num muted', text: '4:12' })), h('div', { 'class': 'pv-cap', text: 'Audio plays in place.' })]);
+  } else if (kind === 'pdf') {
+    var sheet = h('div', { 'class': 'sheet' }, h('h4', { text: displayOr(n).replace(/\.pdf$/i, '') }));
+    ['', 'w8', '', 'w7', '', '', 'w8', 'w4', '', 'w7', '', 'w8', '', 'w4'].forEach(function (c) { sheet.appendChild(h('i', { 'class': c })); });
+    add(box, [h('div', { 'class': 'pv-pdf' }, sheet), h('div', { 'class': 'pv-cap', text: 'The PDF opens in the browser’s own viewer, in a frame of this page.' })]);
+  } else if (kind === 'text') {
+    var long = n.size > 64 * KiB;
+    add(box, [long ? h('div', { 'class': 'pv-cap', text: 'Showing the first 64 KiB of ' + fmtSize(n.size) + '.' }) : null,
+      h('pre', { 'class': 'pv-text', text: sampleText(n) }),
+      long ? h('div', null, h('button', { 'class': 'btn small', type: 'button', onclick: function () { toast('The app would fetch the next 64 KiB here.'); } }, 'Show the next 64 KiB')) : null]);
+  } else {
+    var why = kind === 'novideo' ? 'This browser cannot play this file (' + (n.hevc ? 'HEVC video, ' : '') + n.ext.toUpperCase() + ' container).'
+      : (WHY[n.type] || 'There is no built-in preview for this kind of file.');
+    add(box, [h('div', { 'class': 'pv-msg' }, h('b', { text: why }), 'Its details and the folder it sits in are shown instead.'), factsEl(n)]);
+    if (n.parent && n.parent !== root) add(box, [h('div', { 'class': 'pv-cap fs', text: 'In ' + parentPath(n) }), miniList(n.parent, n, null, o.compact ? 5 : 14)]);
+  }
+  return box;
+}
+
+/* ------------------------------------------------------------------ review */
+
+var GROUP_LABEL = { share: 'Share', type: 'File type', ext: 'Extension', folder: 'Folder' };
+var ORDER_LABEL = { size: 'Largest first', oldest: 'Oldest first', newest: 'Newest first', name: 'Name, A to Z' };
+var SIZE_OPTS = [[0, 'any size'], [100 * MiB, '100 MiB'], [GiB, '1 GiB'], [10 * GiB, '10 GiB'], [50 * GiB, '50 GiB']];
+var PRESETS = [
+  ['Largest files by type, share by share', { kind: 'file', groups: ['share', 'type'], order: 'size', minSize: 0 }],
+  ['Folders first, largest first', { kind: 'dir', groups: ['share'], order: 'size', minSize: 0 }],
+  ['Biggest files anywhere', { kind: 'file', groups: [], order: 'size', minSize: GiB }],
+  ['Oldest first, share by share', { kind: 'file', groups: ['share'], order: 'oldest', minSize: 0 }],
+  ['One folder at a time', { kind: 'file', groups: ['share', 'folder'], order: 'size', minSize: 0 }]
+];
+function defaultSpec() { return { kind: 'file', shares: [], types: [], minSize: 0, older: 0, name: '', under: null, groups: ['share', 'type'], order: 'size', excludeCovered: true }; }
+function copySpec(s) { return { kind: s.kind, shares: s.shares.slice(), types: s.types.slice(), minSize: s.minSize, older: s.older, name: s.name, under: s.under, groups: s.groups.slice(), order: s.order, excludeCovered: s.excludeCovered }; }
+
+var rv = { spec: defaultSpec(), q: null, cur: null, target: null, revisit: -1, history: [], alerts: [], aside: {}, seen: {}, banner: null,
+  armed: false, failNext: false, lastKey: null, recall: [], recallIdx: -1, recallText: null, builder: false, draft: null, peek: null,
+  form: null, carry: null, confirmGroup: false };
+
+function groupVal(key, n) {
+  if (key === 'share') return { raw: 's' + n.share.id, label: n.share.name };
+  if (key === 'type') return { raw: 't' + n.type, label: n.type };
+  if (key === 'ext') return { raw: 'e' + n.ext, label: n.ext ? '.' + n.ext : 'no extension' };
+  return { raw: 'f' + n.parent.id, label: relPath(n.parent) || 'tank' };
+}
+function orderCmp(spec) {
+  return function (a, b) {
+    var d = 0;
+    if (spec.order === 'oldest') d = modOf(a) - modOf(b);
+    else if (spec.order === 'newest') d = modOf(b) - modOf(a);
+    else if (spec.order === 'name') d = a.name.toLowerCase() < b.name.toLowerCase() ? -1 : a.name.toLowerCase() > b.name.toLowerCase() ? 1 : 0;
+    else d = b.size - a.size;
+    return d || a.id - b.id;
+  };
+}
+
+/* Mirrors POST /api/queue: candidates by filter, grouped, groups ranked by total bytes at each level, items from the first open group. */
+function computeQueue(spec) {
+  var gmap = new Map(), i, d;
+  for (i = 0; i < nodes.length; i++) {
+    var n = nodes[i];
+    if (!n.share || n.kind !== spec.kind) continue;
+    if (spec.shares.length && spec.shares.indexOf(n.share.id) < 0) continue;
+    if (spec.types.length && spec.types.indexOf(n.type) < 0) continue;
+    if (spec.minSize && n.size < spec.minSize) continue;
+    if (spec.older && ageDays(n) < spec.older) continue;
+    if (spec.name && n.name.toLowerCase().indexOf(spec.name.toLowerCase()) < 0) continue;
+    if (spec.under && !isUnder(n, spec.under)) continue;
+    var vals = spec.groups.map(function (k) { return groupVal(k, n); });
+    var keys = [], acc = '';
+    for (d = 0; d < vals.length; d++) { acc += vals[d].raw + '|'; keys.push(acc); }
+    var g = gmap.get(acc);
+    if (!g) {
+      g = { key: acc, keys: keys, label: vals.length ? vals.map(function (v) { return v.label; }).join(', ') : 'Everything', total: 0, size: 0, remaining: 0, items: [], members: [] };
+      gmap.set(acc, g);
+    }
+    g.total++; g.size += n.size; g.members.push(n);
+    var done = ann.has(n.id) || rv.aside[n.id] || rv.seen[n.id] || (spec.excludeCovered && coveredBy(n));
+    if (!done) { g.remaining++; g.items.push(n); }
+  }
+  var groups = Array.from(gmap.values()), depth = spec.groups.length, totals = [];
+  for (d = 0; d < depth; d++) totals.push(new Map());
+  groups.forEach(function (g2) { for (var d2 = 0; d2 < depth; d2++) totals[d2].set(g2.keys[d2], (totals[d2].get(g2.keys[d2]) || 0) + g2.size); });
+  groups.sort(function (a, b) {
+    for (var d3 = 0; d3 < depth; d3++) {
+      if (a.keys[d3] === b.keys[d3]) continue;
+      var ta = totals[d3].get(a.keys[d3]), tb = totals[d3].get(b.keys[d3]);
+      if (ta !== tb) return tb - ta;
+      return a.keys[d3] < b.keys[d3] ? -1 : 1;
+    }
+    return 0;
+  });
+  var open = groups.filter(function (g3) { return g3.remaining > 0; });
+  var remaining = 0; open.forEach(function (g4) { remaining += g4.remaining; });
+  return { all: groups, groups: open, items: open.length ? open[0].items.slice().sort(orderCmp(spec)) : [], remaining: remaining };
+}
+function groupStats(g) {
+  var d = 0, s = 0, c = 0;
+  g.members.forEach(function (n) { var a = ann.get(n.id); if (a && a.skipped) s++; else if (a) d++; else if (coveredBy(n)) c++; });
+  return { label: g.label, total: g.total, described: d, skipped: s, covered: c };
+}
+function olderLabel(days) { return days >= 365 ? Math.round(days / 365) + (days >= 730 ? ' years' : ' year') : days + ' days'; }
+function specSentence(s) {
+  var what = s.kind === 'dir' ? 'Folders' : 'Files';
+  var scope = s.under ? ' in tank/' + relPath(s.under) : s.shares.length ? ' in ' + s.shares.map(function (id) { return byId(id).name; }).join(', ') : ' in all shares';
+  var extra = '';
+  if (s.types.length) extra += ', ' + s.types.join(' and ') + ' only';
+  if (s.minSize) extra += ', at least ' + fmtSize(s.minSize);
+  if (s.older) extra += ', unchanged for ' + olderLabel(s.older);
+  if (s.name) extra += ', name contains “' + s.name + '”';
+  return what + scope + extra;
+}
+function childToward(anc, n) { var c = n; while (c.parent && c.parent !== anc) c = c.parent; return c.parent === anc ? c : null; }
+function parseReview(text) {
+  var s = text.trim(), m, d;
+  if (!s) return { ok: true, value: '' };
+  m = /^\+?(\d{1,3})\s*([dwmy])$/i.exec(s);
+  if (m) {
+    var k = Number(m[1]), u = m[2].toLowerCase();
+    d = new Date(NOW * 1000);
+    if (u === 'd') d.setUTCDate(d.getUTCDate() + k);
+    else if (u === 'w') d.setUTCDate(d.getUTCDate() + 7 * k);
+    else if (u === 'm') d.setUTCMonth(d.getUTCMonth() + k);
+    else d.setUTCFullYear(d.getUTCFullYear() + k);
+    return { ok: true, value: d.toISOString().slice(0, 10) };
+  }
+  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) {
+    d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    if (d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3])) return { ok: true, value: s };
+  }
+  return { ok: false, value: '' };
+}
+
+function rvStart() {
+  rv.history = []; rv.alerts = []; rv.aside = {}; rv.seen = {}; rv.lastKey = null; rv.confirmGroup = false;
+  rvAdvance(true, '');
+}
+function rvAdvance(first, info) {
+  rv.q = computeQueue(rv.spec);
+  rv.revisit = -1; rv.peek = null; rv.armed = false; rv.recallIdx = -1; rv.recallText = null; rv.carry = null; rv.confirmGroup = false;
+  rv.cur = rv.q.items.length ? rv.q.items[0] : null;
+  rv.target = rv.cur;
+  var key = rv.q.groups.length ? rv.q.groups[0].key : null;
+  rv.banner = info ? { kind: 'info', text: info } : null;
+  if (!first && rv.lastKey !== null && key !== rv.lastKey) {
+    var done = null;
+    rv.q.all.forEach(function (g) { if (g.key === rv.lastKey) done = g; });
+    if (done) rv.banner = { kind: 'group', done: groupStats(done), next: rv.q.groups.length ? rv.q.groups[0] : null, info: info || '' };
+  }
+  rv.lastKey = key;
+  if (state.screen === 'review') render();
+}
+function rvValues() {
+  var f = rv.form;
+  return { note: f.note.value.trim(), displayName: f.dn.value.trim(), prefixes: f.px.get(), pending: f.px.pending(), owner: f.owner.value.trim(), review: f.review.value.trim() };
+}
+function rvDirty() {
+  if (!rv.form) return false;
+  var v = rvValues(), o = rv.form.initial;
+  return v.note !== o.note || v.displayName !== o.displayName || v.owner !== o.owner || v.review !== o.reviewAfter || v.pending !== '' || v.prefixes.join('|') !== o.prefixes.join('|');
+}
+function rvCanBack() { return rv.revisit >= 0 ? rv.revisit > 0 : rv.history.length > 0; }
+
+/* Stands in for the background PUT. The screen has already moved on when this answers. */
+function rvSend(entry) {
+  var fail = rv.failNext; rv.failNext = false;
+  setTimeout(function () {
+    var t = byId(entry.targetId);
+    if (t.gone) {
+      var a = ann.get(t.id);
+      entry.status = 'gone';
+      rv.alerts.push({ kind: 'gone', entry: entry, note: a && a.note ? a.note : '' });
+      ann.delete(t.id); rv.aside[t.id] = true;
+    } else if (fail) {
+      entry.status = 'failed';
+      rv.alerts.push({ kind: 'failed', entry: entry });
+    } else entry.status = 'ok';
+    if (state.screen === 'review') { rvDrawAlerts(); rvDrawQueueCol(); }
+  }, 700);
+}
+function rvSave() {
+  if (!rv.cur || !rv.form) return;
+  if (state.app === 'readonly') { rv.seen[rv.cur.id] = true; rvAdvance(false, ''); return; }
+  var f = rv.form, v = rvValues(), bad = null;
+  f.clearErrors();
+  if (v.pending) {
+    var exact = null;
+    prefixes.forEach(function (p) { if (p.name.toLowerCase() === v.pending.toLowerCase()) exact = p; });
+    if (exact) { f.px.add(exact.name); v.prefixes = f.px.get(); }
+    else bad = ['px', '“' + v.pending + '” is not in your prefix list. Pick one from the list or clear it.'];
+  }
+  if (!bad && v.note.length > 10000) bad = ['note', 'The note is longer than 10,000 characters.'];
+  if (!bad && (v.displayName.length > 255 || v.displayName.indexOf('/') >= 0)) bad = ['dn', 'A display name is one line of at most 255 characters, without a slash.'];
+  if (!bad && v.owner.length > 100) bad = ['owner', 'The owner is longer than 100 characters.'];
+  var rd = parseReview(v.review);
+  if (!bad && !rd.ok) bad = ['review', 'Use a date like 2027-01-31, or a span like 6m or 1y.'];
+  if (bad) { f.error(bad[0], bad[1]); return; }
+  if (!v.note && !v.displayName && !v.prefixes.length && !v.owner && !rd.value) { rvDoSkip('Nothing was entered, so the item was skipped.'); return; }
+
+  var target = rv.target, item = rv.cur, before = rv.q.remaining;
+  var rec = { note: v.note, displayName: v.displayName, prefixes: v.prefixes.slice(), owner: v.owner, reviewAfter: rd.value, skipped: false };
+  ann.set(target.id, rec);
+  if (target !== item && !rv.spec.excludeCovered && !ann.has(item.id)) ann.set(item.id, blankAnn(true));
+  rv.recall.push({ note: rec.note, prefixes: rec.prefixes.slice(), owner: rec.owner, reviewAfter: rec.reviewAfter });
+  if (rv.recall.length > 20) rv.recall.shift();
+  var entry;
+  if (rv.revisit >= 0) { entry = rv.history[rv.revisit]; entry.result = 'saved'; entry.status = 'pending'; entry.targetId = target.id; }
+  else { entry = { id: item.id, targetId: target.id, result: 'saved', status: 'pending' }; rv.history.push(entry); }
+  rvSend(entry);
+  var info = '';
+  if (target !== item) {
+    var left = computeQueue(rv.spec).remaining;
+    info = 'Described the folder “' + target.name + '”.' + (rv.spec.excludeCovered ? ' ' + fmtInt(Math.max(0, before - left)) + ' items inside it left the queue.' : '');
+  }
+  rvAdvance(false, info);
+}
+function rvDoSkip(info) {
+  var item = rv.cur;
+  if (!item) return;
+  if (rv.revisit >= 0) { rvAdvance(false, ''); return; }
+  ann.set(item.id, blankAnn(true));
+  var entry = { id: item.id, targetId: item.id, result: 'skipped', status: 'pending' };
+  rv.history.push(entry);
+  rvSend(entry);
+  rvAdvance(false, info || '');
+}
+function rvSkip() {
+  if (!rv.cur) return;
+  if (state.app === 'readonly') { rv.seen[rv.cur.id] = true; rvAdvance(false, ''); return; }
+  if (rvDirty() && !rv.armed) { rv.armed = true; rvDrawArmed(); return; }
+  rvDoSkip('');
+}
+function rvSkipGroup() {
+  var g = rv.q.groups[0];
+  if (!g || state.app === 'readonly') return;
+  g.items.forEach(function (n) { if (!ann.has(n.id)) ann.set(n.id, blankAnn(true)); });
+  rv.history.push({ id: g.items[0].id, targetId: g.items[0].id, result: 'skipped', status: 'ok', bulk: g.items.length, label: g.label });
+  rvAdvance(false, '');
+}
+function rvRevisit(idx) {
+  var entry = rv.history[idx];
+  if (!entry) return;
+  rv.revisit = idx; rv.cur = byId(entry.id); rv.target = byId(entry.targetId);
+  rv.peek = null; rv.armed = false; rv.banner = null; rv.carry = null; rv.confirmGroup = false;
+  render();
+}
+function rvBack() {
+  var idx = rv.revisit >= 0 ? rv.revisit - 1 : rv.history.length - 1;
+  while (idx >= 0 && rv.history[idx].bulk) idx--;
+  if (idx >= 0) rvRevisit(idx);
+}
+function rvRetarget(t) {
+  var typed = rv.form ? rvValues() : null;
+  rv.target = t; rv.peek = null; rv.armed = false;
+  rv.carry = (typed && !ann.has(t.id)) ? typed : null;
+  render();
+}
+function rvParent() {
+  if (!rv.cur || !rv.target || state.app === 'readonly') return;
+  var p = rv.target.parent;
+  if (!p || p === root) { toast('This is a share. The pool above it cannot be described.'); return; }
+  rvRetarget(p);
+}
+function rvChild() {
+  if (!rv.cur || rv.target === rv.cur) return;
+  var c = childToward(rv.target, rv.cur);
+  if (c) rvRetarget(c);
+}
+function rerender() {
+  if (state.screen === 'review' && rv.form) rv.carry = rvValues();
+  render();
+}
+
+function prefixField(initial, ro) {
+  var tokens = initial.slice(), hi = 0, open = false;
+  var input = h('input', { id: 'f-px', type: 'text', autocomplete: 'off', disabled: ro, role: 'combobox', 'aria-expanded': 'false', 'aria-controls': 'px-list', 'aria-autocomplete': 'list', placeholder: 'Type to filter, Enter to add' });
+  var list = h('div', { 'class': 'suggest', id: 'px-list', role: 'listbox', hidden: true });
+  var wrap = h('div', { 'class': 'tokens' }, input, list);
+  function matches() {
+    var q = input.value.trim().toLowerCase();
+    return prefixes.filter(function (p) { return tokens.indexOf(p.name) < 0 && (!q || p.name.toLowerCase().indexOf(q) === 0 || p.meaning.toLowerCase().indexOf(q) >= 0); });
+  }
+  function drawTokens() {
+    var old = wrap.querySelectorAll('.tag');
+    for (var i = 0; i < old.length; i++) old[i].remove();
+    tokens.forEach(function (name) {
+      var chip = h('span', { 'class': 'tag' }, name, ro ? null : h('button', { type: 'button', tabindex: '-1', 'aria-label': 'Remove ' + name,
+        onclick: function () { tokens.splice(tokens.indexOf(name), 1); drawTokens(); drawList(); input.focus(); } }, '×'));
+      wrap.insertBefore(chip, input);
+    });
+  }
+  function drawList() {
+    var m = matches();
+    list.replaceChildren();
+    if (!open || !m.length) { list.hidden = true; input.setAttribute('aria-expanded', 'false'); return; }
+    if (hi >= m.length) hi = m.length - 1;
+    m.forEach(function (p, i) {
+      var o = h('div', { 'class': 'opt' + (i === hi ? ' hi' : ''), role: 'option', 'aria-selected': i === hi ? 'true' : 'false' }, h('b', { text: p.name }), h('span', { text: p.meaning }));
+      o.addEventListener('mousedown', function (e) { e.preventDefault(); addToken(p.name); });
+      list.appendChild(o);
+    });
+    list.hidden = false; input.setAttribute('aria-expanded', 'true');
+  }
+  function addToken(name) { if (tokens.indexOf(name) < 0) tokens.push(name); input.value = ''; hi = 0; drawTokens(); drawList(); }
+  input.addEventListener('input', function () { open = true; hi = 0; drawList(); });
+  input.addEventListener('focus', function () { open = true; hi = 0; drawList(); });
+  input.addEventListener('blur', function () { open = false; drawList(); });
+  input.addEventListener('keydown', function (e) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    var m = matches();
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (m.length) { open = true; hi = (hi + (e.key === 'ArrowDown' ? 1 : m.length - 1)) % m.length; drawList(); }
+    } else if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      if (open && m.length && (e.key === 'Enter' || input.value.trim())) addToken(m[hi].name);
+    } else if (e.key === 'Backspace' && input.value === '' && tokens.length) {
+      tokens.pop(); drawTokens(); drawList();
+    } else if (e.key === 'Escape') {
+      if (!list.hidden) { open = false; drawList(); }
+    } else if (e.key === 'Tab') {
+      if (input.value.trim() && m.length) addToken(m[hi].name);
+    }
+  });
+  drawTokens();
+  return { el: wrap, input: input, get: function () { return tokens.slice(); }, pending: function () { return input.value.trim(); }, add: addToken,
+    set: function (l) { tokens = l.slice(); drawTokens(); drawList(); } };
+}
+
+function rvBannerEl(b) {
+  if (b.kind === 'group') {
+    var d = b.done;
+    return h('div', { 'class': 'banner good', role: 'status' }, h('span', { 'class': 'st' }, h('i', { text: '✓' }), 'Group finished'),
+      h('div', null, d.label + ': ' + fmtInt(d.described) + ' described, ' + fmtInt(d.skipped) + ' skipped' + (d.covered ? ', ' + fmtInt(d.covered) + ' covered by a folder' : '') + '. ' +
+        (b.info ? b.info + ' ' : '') + (b.next ? 'Now: ' + b.next.label + ', ' + fmtInt(b.next.remaining) + ' items.' : '')));
+  }
+  return h('div', { 'class': 'note-line', role: 'status', text: b.text });
+}
+
+function rvFormEl() {
+  var item = rv.cur, t = rv.target, ro = state.app === 'readonly';
+  var a = ann.get(t.id), init = (a && !a.skipped) ? a : blankAnn(false);
+  var initial = { note: init.note, displayName: init.displayName, prefixes: init.prefixes.slice(), owner: init.owner, reviewAfter: init.reviewAfter };
+  var box = h('div', { 'class': 'rv-form panel', id: 'rv-form' });
+
+  if (rv.banner) box.appendChild(rvBannerEl(rv.banner));
+  if (rv.revisit >= 0) box.appendChild(h('div', { 'class': 'note-line', text: 'Looking back at item ' + (rv.revisit + 1) + ' of ' + rv.history.length + ' from this session. PageDown leaves it as it is and returns to the queue.' }));
+  if (ro) box.appendChild(h('div', { 'class': 'note-line', text: 'Read-only mode. You can look through the queue; nothing is recorded.' }));
+  if (t !== item) {
+    box.appendChild(h('div', { 'class': 'note-line' }, 'Describing the folder instead of ', h('span', { 'class': 'fs', text: item.name }),
+      '. Everything inside it will count as covered. ', h('span', { 'class': 'kbd', text: 'Alt+↓' }), ' goes back down.'));
+  }
+
+  var path = h('div', { 'class': 'rv-path fs' }, 'tank /');
+  var chain = [], p = t.parent;
+  while (p && p !== root) { chain.unshift(p); p = p.parent; }
+  chain.forEach(function (c) {
+    path.appendChild(h('button', { type: 'button', tabindex: '-1', title: 'Describe this folder instead', onclick: function () { if (!ro) rvRetarget(c); } }, c.name));
+    path.appendChild(document.createTextNode('/'));
+  });
+  box.appendChild(h('div', null, h('div', { 'class': 'insp-kind', text: kindLabel(t) }), h('h2', { 'class': 'fs', text: t.name }), path));
+
+  var facts = h('div', { 'class': 'rv-facts' }, h('span', { text: fmtSize(t.disk) + ' on disk' }));
+  if (Math.abs(t.size - t.disk) > t.size * 0.02) facts.appendChild(h('span', { text: fmtSize(t.size) + ' apparent' }));
+  if (t.kind === 'dir') facts.appendChild(h('span', { text: fmtInt(t.files) + ' files' }));
+  facts.appendChild(h('span', { text: 'changed ' + fmtAge(modOf(t)) }));
+  if (t.kind !== 'dir') facts.appendChild(h('span', { text: 'added ' + fmtDate(t.btime) }));
+  if (t.nlink > 1) facts.appendChild(h('span', { text: t.nlink + ' links' }));
+  box.appendChild(facts);
+
+  var note = h('textarea', { id: 'f-note', rows: '4', value: initial.note, disabled: ro,
+    placeholder: rv.recall.length ? 'What is this for?  Press ↑ to reuse your last note.' : 'What is this for?' });
+  var px = prefixField(initial.prefixes, ro);
+  var dn = h('input', { id: 'f-dn', type: 'text', value: initial.displayName, disabled: ro, autocomplete: 'off', placeholder: 'A readable name. The name on disk does not change.' });
+  var owner = h('input', { id: 'f-owner', type: 'text', value: initial.owner, disabled: ro, autocomplete: 'off', list: 'owners' });
+  var review = h('input', { id: 'f-review', type: 'text', value: initial.reviewAfter, disabled: ro, autocomplete: 'off', placeholder: '2027-01-31, or 6m, 1y' });
+  var reviewOut = h('div', { 'class': 'hint' });
+  function showReview() {
+    var r = parseReview(review.value);
+    reviewOut.textContent = !review.value.trim() ? 'Optional. A date, or a span such as 6m or 1y.' : r.ok ? 'Review after ' + r.value : 'Not a date yet.';
+  }
+  review.addEventListener('input', showReview);
+  function field(key, label, forId, control, extra) {
+    return h('div', { 'class': 'field', 'data-f': key }, h('label', { 'for': forId, text: label }), control, extra || null, h('div', { 'class': 'err', role: 'alert', hidden: true }));
+  }
+  var suggest = (t.suggest && !initial.displayName && !ro)
+    ? h('div', { 'class': 'hint' }, 'Suggested: ', h('b', { text: t.suggest }), ' ', h('button', { 'class': 'btn link', type: 'button', tabindex: '-1', onclick: function () { dn.value = t.suggest; dn.focus(); } }, 'Use it'), ' ', h('span', { 'class': 'later', text: 'naming, later release' }))
+    : null;
+  add(box, [
+    field('note', 'What is it for?', 'f-note', note),
+    field('px', 'Prefixes', 'f-px', px.el),
+    field('dn', 'Display name', 'f-dn', dn, suggest),
+    field('owner', 'Owner', 'f-owner', owner),
+    field('review', 'Review after', 'f-review', review, reviewOut),
+    h('datalist', { id: 'owners' }, h('option', { value: 'maren' }), h('option', { value: 'jonas' }))
+  ]);
+
+  var btns = h('div', { 'class': 'rv-btns' },
+    h('button', { 'class': 'btn primary', type: 'button', onclick: rvSave }, ro ? 'Next' : rv.revisit >= 0 ? 'Save changes' : 'Save and next', h('span', { 'class': 'kbd', text: 'Ctrl+Enter' })),
+    ro ? null : h('button', { 'class': 'btn', type: 'button', onclick: rvSkip }, rv.revisit >= 0 ? 'Leave as is' : 'Skip', h('span', { 'class': 'kbd', text: 'PageDown' })),
+    h('button', { 'class': 'btn', type: 'button', disabled: !rvCanBack(), onclick: rvBack }, 'Back', h('span', { 'class': 'kbd', text: 'PageUp' })));
+  box.appendChild(btns);
+  box.appendChild(h('div', { 'class': 'note-line warn', id: 'rv-armed', role: 'alert', hidden: !rv.armed, text: 'You typed something. PageDown again skips this item and discards it. Ctrl+Enter saves it.' }));
+  box.appendChild(h('div', { 'class': 'rv-btns' },
+    h('button', { 'class': 'btn small', type: 'button', disabled: ro || !t.parent || t.parent === root, onclick: rvParent }, 'Describe the folder instead', h('span', { 'class': 'kbd', text: 'Alt+↑' }))));
+  if (!ro) {
+    var failCb = h('input', { type: 'checkbox', id: 'rv-fail', checked: rv.failNext });
+    failCb.addEventListener('change', function () { rv.failNext = failCb.checked; });
+    box.appendChild(h('div', { 'class': 'demo' }, failCb, h('label', { 'for': 'rv-fail', text: 'Mockup only: make the next save fail' })));
+  }
+
+  function fillFrom(r) { note.value = r.note; px.set(r.prefixes); owner.value = r.owner; review.value = r.reviewAfter; showReview(); }
+  note.addEventListener('keydown', function (e) {
+    if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    var free = note.value === '' || (rv.recallText !== null && note.value === rv.recallText);
+    if (!free || !rv.recall.length) return;
+    e.preventDefault();
+    var idx = rv.recallIdx + (e.key === 'ArrowUp' ? 1 : -1);
+    if (idx < -1 || idx >= rv.recall.length) return;
+    rv.recallIdx = idx;
+    if (idx === -1) { fillFrom(blankAnn(false)); rv.recallText = null; }
+    else { var r = rv.recall[rv.recall.length - 1 - idx]; fillFrom(r); rv.recallText = r.note; }
+  });
+
+  rv.form = { note: note, dn: dn, px: px, owner: owner, review: review, initial: initial,
+    error: function (key, msg) {
+      var f = box.querySelector('.field[data-f="' + key + '"]');
+      if (!f) return;
+      var e = f.querySelector('.err');
+      e.textContent = msg; e.hidden = false;
+      var c = key === 'px' ? px.input : f.querySelector('textarea, input');
+      if (c) c.focus();
+    },
+    clearErrors: function () { var es = box.querySelectorAll('.err'); for (var i = 0; i < es.length; i++) es[i].hidden = true; } };
+  if (rv.carry) {
+    var cv = rv.carry;
+    note.value = cv.note; dn.value = cv.displayName; px.set(cv.prefixes); owner.value = cv.owner; review.value = cv.review;
+    rv.carry = null;
+  }
+  showReview();
+  return box;
+}
+function rvDrawArmed() { var el = document.getElementById('rv-armed'); if (el) el.hidden = !rv.armed; }
+
+function rvPreviewEl() {
+  var t = rv.peek || rv.target;
+  var hl = (!rv.peek && rv.cur !== rv.target) ? childToward(rv.target, rv.cur) : null;
+  return h('div', { 'class': 'rv-preview panel', id: 'rv-preview', tabindex: '0', 'aria-label': 'Preview' },
+    h('div', { 'class': 'pv-head' }, h('span', null, PV_TITLE[previewKind(t)], rv.peek ? h('span', { 'class': 'fs', text: '  ' + rv.peek.name }) : null),
+      rv.peek ? h('button', { 'class': 'btn small', type: 'button', onclick: function () { rv.peek = null; rvDrawPreview(); } }, 'Back to the folder') : null),
+    h('div', { 'class': 'pv-body pv' }, preview(t, { highlight: hl, onPeek: function (c) { rv.peek = c; rvDrawPreview(); } })));
+}
+function rvDrawPreview() { var old = document.getElementById('rv-preview'); if (old) old.replaceWith(rvPreviewEl()); }
+
+function rvQueueColEl() {
+  var q = rv.q, col = h('div', { 'class': 'rv-queue', id: 'rv-queue' }), ro = state.app === 'readonly', g0 = q.groups[0];
+  var now = h('div', { 'class': 'panel gnow' });
+  if (g0) {
+    add(now, [h('div', { 'class': 'insp-kind', text: 'Current group' }), h('b', { text: g0.label }),
+      h('div', { 'class': 'cnt', text: fmtInt(g0.remaining) + ' left' }),
+      h('div', { 'class': 'muted', text: 'of ' + fmtInt(g0.total) + ' in this group, ' + fmtSize(g0.size) }),
+      h('div', { 'class': 'meter', role: 'img', 'aria-label': fmtInt(g0.total - g0.remaining) + ' of ' + fmtInt(g0.total) + ' done' },
+        h('i', { style: { width: ((g0.total - g0.remaining) / g0.total * 100).toFixed(1) + '%' } })),
+      h('div', { 'class': 'muted', text: 'Whole queue: ' + fmtInt(q.remaining) + ' left in ' + fmtInt(q.groups.length) + ' groups' })]);
+    if (!ro && rv.revisit < 0) {
+      if (rv.confirmGroup) {
+        add(now, h('div', { 'class': 'note-line warn' }, 'Skip all ' + fmtInt(g0.remaining) + ' remaining items in this group? ',
+          h('button', { 'class': 'btn small', type: 'button', onclick: rvSkipGroup }, 'Skip them'), ' ',
+          h('button', { 'class': 'btn small', type: 'button', onclick: function () { rv.confirmGroup = false; rvDrawQueueCol(); } }, 'Cancel')));
+      } else {
+        add(now, h('div', null, h('button', { 'class': 'btn link', type: 'button', onclick: function () { rv.confirmGroup = true; rvDrawQueueCol(); } }, 'Skip the rest of this group')));
+      }
+    }
+  } else add(now, h('div', { 'class': 'muted', text: 'No groups left.' }));
+  col.appendChild(now);
+
+  var list = h('div', { 'class': 'glist' }), doneN = q.all.length - q.groups.length;
+  if (doneN) list.appendChild(h('div', { 'class': 'muted', text: fmtInt(doneN) + ' finished' }));
+  q.groups.slice(0, 9).forEach(function (g, i) {
+    list.appendChild(h('div', { 'class': 'g' + (i === 0 ? ' cur' : '') }, h('span', { text: g.label }), h('span', { 'class': 'n', text: fmtInt(g.remaining) }),
+      h('div', { 'class': 'meter' }, h('i', { style: { width: ((g.total - g.remaining) / g.total * 100).toFixed(1) + '%' } }))));
+  });
+  if (q.groups.length > 9) list.appendChild(h('div', { 'class': 'muted', text: 'and ' + fmtInt(q.groups.length - 9) + ' more groups' }));
+  col.appendChild(h('div', { 'class': 'panel' }, h('h2', { 'class': 't', text: 'Groups, largest first' }), list));
+
+  var tl = h('div', { 'class': 'trail' });
+  rv.history.slice(-3).forEach(function (e) {
+    var label = e.bulk ? fmtInt(e.bulk) + ' items in ' + e.label : byId(e.id).name;
+    var r = e.status === 'pending' ? 'saving' : e.status === 'failed' ? 'not saved' : e.status === 'gone' ? 'gone' : e.status === 'discarded' ? 'discarded' : e.result;
+    tl.appendChild(h('div', { 'class': 'it done' }, h('span', { 'class': e.bulk ? null : 'fs', text: label }),
+      h('span', { 'class': 'r' + (e.status === 'failed' || e.status === 'gone' ? ' bad' : ''), text: r })));
+  });
+  if (rv.cur) tl.appendChild(h('div', { 'class': 'it cur' }, h('span', { 'class': 'fs', text: rv.cur.name }), h('span', { 'class': 'r', text: rv.revisit >= 0 ? 'looking back' : 'now' })));
+  (rv.revisit >= 0 ? q.items.slice(0, 5) : q.items.slice(1, 6)).forEach(function (n) {
+    tl.appendChild(h('div', { 'class': 'it' }, h('span', { 'class': 'fs', text: n.name }), h('span', { 'class': 'r num muted', text: fmtSize(n.size) })));
+  });
+  col.appendChild(h('div', { 'class': 'panel' }, h('h2', { 'class': 't', text: 'Done, now, next' }), tl));
+  return col;
+}
+function rvDrawQueueCol() { var old = document.getElementById('rv-queue'); if (old) old.replaceWith(rvQueueColEl()); }
+
+function rvAlertEls() {
+  return rv.alerts.map(function (al) {
+    var n = byId(al.entry.id);
+    function close() { rv.alerts.splice(rv.alerts.indexOf(al), 1); rvDrawAlerts(); }
+    if (al.kind === 'gone') {
+      var kept = h('input', { id: 'rv-kept-' + al.entry.id, type: 'text', value: al.note, readonly: true, 'aria-label': 'The note you typed' });
+      return h('div', { 'class': 'banner crit', role: 'alert' }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'Not saved'),
+        h('div', null, h('span', { 'class': 'fs', text: n.name }), ' is no longer where the last scan found it (the server answered 409). It is set aside for this session.',
+          al.note ? h('div', { 'class': 'hint', text: 'Your note, so it is not lost:' }) : null, al.note ? kept : null),
+        al.note ? h('button', { 'class': 'btn small', type: 'button', onclick: function () { copyText(al.note, kept); } }, 'Copy note') : null,
+        h('button', { 'class': 'btn small', type: 'button', onclick: openScanDialog }, 'Scan now'),
+        h('button', { 'class': 'btn small', type: 'button', onclick: close }, 'Dismiss'));
+    }
+    return h('div', { 'class': 'banner crit', role: 'alert' }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'Not saved'),
+      h('div', null, h('span', { 'class': 'fs', text: n.name }), ': the server could not be reached. Your text is kept in the browser.'),
+      h('button', { 'class': 'btn small', type: 'button', onclick: function () { close(); al.entry.status = 'pending'; rvSend(al.entry); rvDrawQueueCol(); } }, 'Retry'),
+      h('button', { 'class': 'btn small', type: 'button', onclick: function () { close(); rvRevisit(rv.history.indexOf(al.entry)); } }, 'Edit'),
+      h('button', { 'class': 'btn small', type: 'button', onclick: function () { close(); ann.delete(al.entry.targetId); al.entry.status = 'discarded'; rvDrawQueueCol(); } }, 'Discard'));
+  });
+}
+function rvDrawAlerts() { var box = document.getElementById('rv-alerts'); if (box) setKids(box, rvAlertEls()); }
+
+function rvTopEl() {
+  var s = rv.spec, q = h('div', { 'class': 'q' }, h('b', { text: specSentence(s) }));
+  if (s.groups.length) {
+    q.appendChild(h('span', { 'class': 'muted', text: 'by' }));
+    s.groups.forEach(function (g, i) {
+      if (i) q.appendChild(h('span', { 'class': 'muted', text: 'then' }));
+      q.appendChild(h('span', { 'class': 'okey', text: GROUP_LABEL[g] }));
+    });
+  }
+  q.appendChild(h('span', { 'class': 'okey', text: ORDER_LABEL[s.order] }));
+  q.appendChild(h('button', { 'class': 'btn small', type: 'button', onclick: function () { rv.builder = !rv.builder; rv.draft = copySpec(rv.spec); rerender(); } }, rv.builder ? 'Close' : 'Change order'));
+  var done = 0, sk = 0;
+  rv.history.forEach(function (e) { if (e.result === 'saved') done++; else sk += e.bulk || 1; });
+  return h('div', { 'class': 'rv-top' }, q, h('div', { 'class': 'muted', text: 'This session: ' + done + ' described, ' + sk + ' skipped' }));
+}
+
+function rvCommitDraft() { rv.spec = copySpec(rv.draft); rv.builder = false; rvStart(); }
+function rvBuilderEl() {
+  var d = rv.draft, box = h('div', { 'class': 'panel builder', id: 'rv-builder' });
+  var left = h('div'), right = h('div', { 'class': 'bprev' }), keys = h('div', { 'class': 'brow' });
+  function redraw() { var old = document.getElementById('rv-builder'); if (old) old.replaceWith(rvBuilderEl()); }
+  function drawPrev() {
+    var q = computeQueue(d);
+    setKids(right, [h('h2', { 'class': 't', text: 'What this order gives' }),
+      h('div', null, h('b', { text: fmtInt(q.remaining) + ' items' }), ' left to review in ' + fmtInt(q.groups.length) + ' groups' +
+        (q.all.length > q.groups.length ? ' (' + fmtInt(q.all.length - q.groups.length) + ' groups already finished)' : '') + '. The largest group comes first.'),
+      h('ol', null, q.groups.slice(0, 7).map(function (g) { return h('li', null, h('b', { text: g.label }), ': ' + fmtInt(g.remaining) + ' items, ' + fmtSize(g.size)); })),
+      q.groups.length > 7 ? h('div', { 'class': 'muted', text: 'and ' + fmtInt(q.groups.length - 7) + ' more groups' }) : null]);
+  }
+  function drawKeys() {
+    setKids(keys, h('span', { text: 'Group by' }));
+    d.groups.forEach(function (g, i) {
+      keys.appendChild(h('span', { 'class': 'keychip' }, (i + 1) + '. ' + GROUP_LABEL[g],
+        h('button', { type: 'button', 'aria-label': 'Move ' + GROUP_LABEL[g] + ' earlier', disabled: i === 0, onclick: function () { var x = d.groups.splice(i, 1)[0]; d.groups.splice(i - 1, 0, x); changed(); } }, '←'),
+        h('button', { type: 'button', 'aria-label': 'Move ' + GROUP_LABEL[g] + ' later', disabled: i === d.groups.length - 1, onclick: function () { var x = d.groups.splice(i, 1)[0]; d.groups.splice(i + 1, 0, x); changed(); } }, '→'),
+        h('button', { type: 'button', 'aria-label': 'Remove ' + GROUP_LABEL[g], onclick: function () { d.groups.splice(i, 1); changed(); } }, '×')));
+    });
+    var rest = ['share', 'type', 'ext', 'folder'].filter(function (k) { return d.groups.indexOf(k) < 0; });
+    if (!d.groups.length) keys.appendChild(h('span', { 'class': 'muted', text: 'nothing: one long list' }));
+    if (rest.length) {
+      keys.appendChild(selectEl('rvb-add', [['', 'add a key']].concat(rest.map(function (k) { return [k, GROUP_LABEL[k]]; })), '', function (v) { if (v) { d.groups.push(v); changed(); } }));
+    }
+  }
+  function changed() { drawKeys(); drawPrev(); }
+
+  var shareOpts = [[0, 'all shares']].concat(root.children.map(function (s) { return [s.id, s.name]; }));
+  left.appendChild(h('div', { 'class': 'brow' },
+    h('label', { 'for': 'rvb-kind', text: 'Review' }), selectEl('rvb-kind', [['file', 'files'], ['dir', 'folders']], d.kind, function (v) { d.kind = v; changed(); }),
+    h('label', { 'for': 'rvb-share', text: 'in' }), selectEl('rvb-share', shareOpts, d.shares.length ? d.shares[0] : 0, function (v) { d.shares = Number(v) ? [Number(v)] : []; changed(); }),
+    h('label', { 'for': 'rvb-min', text: 'of at least' }), selectEl('rvb-min', SIZE_OPTS, d.minSize, function (v) { d.minSize = Number(v); changed(); }),
+    d.under ? h('span', { 'class': 'scope' }, 'inside ', h('span', { 'class': 'fs', text: 'tank/' + relPath(d.under) }), h('button', { type: 'button', 'aria-label': 'Remove the folder limit', onclick: function () { d.under = null; redraw(); } }, '×')) : null));
+  left.appendChild(keys);
+  left.appendChild(h('div', { 'class': 'brow' }, h('label', { 'for': 'rvb-order', text: 'Inside each group' }),
+    selectEl('rvb-order', [['size', 'largest first'], ['oldest', 'oldest first'], ['newest', 'newest first'], ['name', 'name, A to Z']], d.order, function (v) { d.order = v; changed(); })));
+  var cov = h('input', { type: 'checkbox', id: 'rvb-cov', checked: d.excludeCovered });
+  cov.addEventListener('change', function () { d.excludeCovered = cov.checked; changed(); });
+  left.appendChild(h('div', { 'class': 'brow' }, cov, h('label', { 'for': 'rvb-cov', text: 'Leave out items inside folders that are already described' })));
+  var pr = h('div', { 'class': 'brow' }, h('span', { 'class': 'muted', text: 'Presets' }));
+  PRESETS.forEach(function (p) {
+    pr.appendChild(h('button', { 'class': 'chipb', type: 'button', onclick: function () { d.kind = p[1].kind; d.groups = p[1].groups.slice(); d.order = p[1].order; d.minSize = p[1].minSize; redraw(); } }, p[0]));
+  });
+  left.appendChild(pr);
+  left.appendChild(h('div', { 'class': 'rv-btns' },
+    h('button', { 'class': 'btn primary', type: 'button', onclick: rvCommitDraft }, 'Start this review', h('span', { 'class': 'kbd', text: 'Ctrl+Enter' })),
+    h('button', { 'class': 'btn', type: 'button', onclick: function () { rv.builder = false; rerender(); } }, 'Cancel')));
+  drawKeys(); drawPrev();
+  add(box, [left, right]);
+  return box;
+}
+
+function rvDoneEl() {
+  var d = 0, s = 0;
+  rv.history.forEach(function (e) { if (e.result === 'saved') d++; else s += e.bulk || 1; });
+  var empty = rv.q.all.length === 0;
+  return h('div', { 'class': 'panel done-panel' },
+    h('h2', { text: empty ? 'Nothing matches this queue' : 'This queue is finished' }),
+    h('p', { 'class': 'muted', text: empty ? 'No items match these filters. Change the order or the filters to start.'
+      : 'Every item is described, skipped or inside a described folder. This session: ' + d + ' described, ' + s + ' skipped.' }),
+    h('div', { 'class': 'actions' },
+      h('button', { 'class': 'btn primary', type: 'button', onclick: function () { rv.builder = true; rv.draft = copySpec(rv.spec); render(); } }, 'Build another queue'),
+      h('button', { 'class': 'btn', type: 'button', disabled: !rvCanBack(), onclick: rvBack }, 'Look back at the last item', h('span', { 'class': 'kbd', text: 'PageUp' })),
+      h('button', { 'class': 'btn', type: 'button', onclick: function () { go('overview'); } }, 'Back to Overview')));
+}
+
+function rvKeysEl() {
+  var el = h('div', { 'class': 'rv-keys' });
+  [['Tab', 'next field'], ['Ctrl+Enter', 'save and next'], ['PageDown', 'skip'], ['PageUp', 'back'], ['Alt+↑', 'describe the folder instead'],
+   ['↑', 'in an empty note: reuse the last one'], ['F2', 'display name'], ['Esc', 'cancel']].forEach(function (k) {
+    el.appendChild(h('span', null, h('span', { 'class': 'kbd', text: k[0] }), ' ' + k[1]));
+  });
+  return el;
+}
+
+SCREENS.review = function () {
+  rv.form = null;
+  var wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(guide('Type a note, press Tab to move on, Ctrl+Enter to save and advance, PageDown to skip, PageUp to go back. The third item is one that has left the disk. Alt+↑ on a film describes its folder; press it twice to describe all of movies at once and watch the queue shrink.'));
+  wrap.appendChild(rvTopEl());
+  if (rv.builder) wrap.appendChild(rvBuilderEl());
+  wrap.appendChild(h('div', { id: 'rv-alerts' }, rvAlertEls()));
+  if (!rv.cur) { wrap.appendChild(rvDoneEl()); return wrap; }
+  wrap.appendChild(h('div', { 'class': 'rv-grid', id: 'rv-work' }, rvQueueColEl(), rvFormEl(), rvPreviewEl()));
+  wrap.appendChild(rvKeysEl());
+  return wrap;
+};
+function rvAfterRender() {
+  if (!rv.form || rv.builder || state.app === 'readonly') return;
+  var coarse = false;
+  try { coarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) {}
+  if (coarse) return;
+  try { rv.form.note.focus({ preventScroll: true }); rv.form.note.setSelectionRange(rv.form.note.value.length, rv.form.note.value.length); } catch (e2) {}
+}
+
+/* Review keys. Capture phase, so they work from any field. Held-down repeats are ignored. */
+document.addEventListener('keydown', function (e) {
+  if (state.screen !== 'review' || scanDlg.open) return;
+  var mod = e.ctrlKey || e.metaKey;
+  if (rv.builder) {
+    if (e.key === 'Enter' && mod) { e.preventDefault(); rvCommitDraft(); }
+    return;
+  }
+  if (!rv.cur) {
+    if (e.key === 'PageUp' && !mod && !e.altKey) { e.preventDefault(); rvBack(); }
+    return;
+  }
+  if (e.key === 'Enter' && mod && !e.altKey) {
+    e.preventDefault(); e.stopPropagation();
+    if (!e.repeat) rvSave();
+  } else if ((e.key === 'PageDown' || e.key === 'PageUp') && !mod && !e.altKey && !e.shiftKey) {
+    if (e.target && e.target.tagName === 'SELECT') return;
+    e.preventDefault(); e.stopPropagation();
+    if (!e.repeat) { if (e.key === 'PageDown') rvSkip(); else rvBack(); }
+  } else if (e.altKey && !mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault(); e.stopPropagation();
+    if (!e.repeat) { if (e.key === 'ArrowUp') rvParent(); else rvChild(); }
+  } else if (e.key === 'F2') {
+    e.preventDefault();
+    if (rv.form && state.app !== 'readonly') rv.form.dn.focus();
+  } else if (e.key === 'Escape' && rv.armed) {
+    rv.armed = false; rvDrawArmed();
+  }
+}, true);
+
+/* ------------------------------------------- shared: bars, markers, inspector */
+
+function seg(label, options, value, onpick) {
+  var g = h('div', { 'class': 'seg', role: 'group', 'aria-label': label });
+  options.forEach(function (o) {
+    g.appendChild(h('button', { type: 'button', 'aria-pressed': o[0] === value ? 'true' : 'false', onclick: function () { onpick(o[0]); } }, o[1]));
+  });
+  return h('div', { 'class': 'ctl' }, h('span', { 'class': 'ctl-l', text: label }), g);
+}
+
+/* One bar per row. Length is the row's share of the folder; segments show what the bytes are (type) or how old they are (age). */
+function compBar(n, denom, colour, snapBytes) {
+  var own = sz(n), snap = snapBytes || 0, whole = own + snap, bar = h('div', { 'class': 'bar' });
+  if (n.kind === 'file' && !n.counted) {
+    bar.appendChild(h('div', { 'class': 'fill hollow', style: { width: (denom > 0 ? Math.min(100, own / denom * 100) : 0).toFixed(2) + '%' } }));
+    return bar;
+  }
+  var fill = h('div', { 'class': 'fill', style: { width: (denom > 0 ? Math.min(100, whole / denom * 100) : 0).toFixed(2) + '%' } });
+  if (colour === 'plain') {
+    if (whole > 0) fill.appendChild(h('i', { 'class': 'k-plain', style: { 'flex-grow': '1' } }));
+  } else {
+    var parts = colour === 'age' ? n.ab : n.tc, cls = colour === 'age' ? AGE_CLS : TYPE_CLS, sum = 0, i;
+    for (i = 0; i < parts.length; i++) sum += parts[i];
+    for (i = 0; i < parts.length; i++) {
+      if (sum > 0 && whole > 0 && parts[i] / sum >= 0.03) fill.appendChild(h('i', { 'class': cls[i], style: { 'flex-grow': (own / whole * parts[i] / sum * 1000).toFixed(1) } }));
+    }
+    if (snap > 0) fill.appendChild(h('i', { 'class': 'k-snap', style: { 'flex-grow': (snap / whole * 1000).toFixed(1) } }));
+  }
+  if (fill.firstChild) bar.appendChild(fill);
+  return bar;
+}
+function legend(colour, withSnap) {
+  var el = h('div', { 'class': 'legend' });
+  if (colour === 'age') el.appendChild(h('span', { 'class': 'legend-t', text: 'Last changed or added:' }));
+  (colour === 'age' ? AGES.map(function (a, i) { return [AGE_CLS[i], a[0]]; }) : CLASSES.map(function (c, i) { return [TYPE_CLS[i], c]; })).forEach(function (it) {
+    el.appendChild(h('span', { 'class': 'legend-i' }, h('i', { 'class': 'sw ' + it[0] }), it[1]));
+  });
+  if (withSnap) el.appendChild(h('span', { 'class': 'legend-i' }, h('i', { 'class': 'sw k-snap' }), 'Held by snapshots'));
+  return el;
+}
+function badges(n) {
+  var out = [], a = ann.get(n.id);
+  if (a && a.skipped) out.push(h('span', { 'class': 'mark', title: 'Skipped in a review', text: 'skipped' }));
+  else if (described(n)) out.push(h('span', { 'class': 'mark noted', title: a.note || 'Described', text: 'described' }));
+  else if (coveredBy(n)) out.push(h('span', { 'class': 'mark', title: 'Inside a described folder', text: 'covered' }));
+  if (a) a.prefixes.forEach(function (p) { out.push(h('span', { 'class': 'tag', text: p })); });
+  if (n.nlink > 1) out.push(h('span', { 'class': 'mark', title: n.counted ? 'Hardlinked. Its size is counted here.' : 'Hardlinked. Its size is counted at its other name.', text: n.nlink + ' links' }));
+  if (n.excluded) out.push(h('span', { 'class': 'mark', text: 'not scanned' }));
+  return out;
+}
+function markRows(tbodyId, id) {
+  var rows = document.querySelectorAll('#' + tbodyId + ' tr[data-id]'), any = false, i;
+  for (i = 0; i < rows.length; i++) {
+    var on = Number(rows[i].getAttribute('data-id')) === id;
+    rows[i].classList.toggle('sel', on);
+    rows[i].setAttribute('aria-selected', on ? 'true' : 'false');
+    rows[i].tabIndex = on ? 0 : -1;
+    if (on) any = true;
+  }
+  if (!any && rows.length) rows[0].tabIndex = 0;
+}
+/* Arrow keys move through a list, Enter opens, Backspace goes up. */
+function listKeys(e, tbody, selId, select, open, up) {
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-id]')), idx = -1, i;
+  if (!rows.length) return;
+  for (i = 0; i < rows.length; i++) { if (Number(rows[i].getAttribute('data-id')) === selId) idx = i; }
+  if (e.altKey && e.key === 'ArrowUp') { if (up) { e.preventDefault(); up(); } return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    var ni = Math.max(0, Math.min(rows.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1)));
+    select(Number(rows[ni].getAttribute('data-id')));
+    rows[ni].focus();
+  } else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+    if (idx >= 0 && open) { e.preventDefault(); open(Number(rows[idx].getAttribute('data-id'))); }
+  } else if ((e.key === 'Backspace' || e.key === 'ArrowLeft') && up) {
+    e.preventDefault(); up();
+  }
+}
+
+function inspector(n, ctx) {
+  var box = h('div', { 'class': 'insp panel' }), a = ann.get(n.id), dn = a && a.displayName, ro = state.app === 'readonly', kind = previewKind(n);
+  box.appendChild(h('div', null, h('div', { 'class': 'insp-kind', text: kindLabel(n) }),
+    dn ? h('h3', { text: dn }) : null,
+    h(dn ? 'div' : 'h3', { 'class': 'insp-name fs', text: n === root ? 'tank' : n.name }),
+    n === root ? null : h('div', { 'class': 'insp-path fs', text: parentPath(n) })));
+  box.appendChild(h('div', { 'class': 'pv compact' }, preview(n, { compact: true })));
+  if (kind !== 'meta' && kind !== 'novideo' && kind !== 'gone') box.appendChild(factsEl(n));
+  if (n === root) {
+    box.appendChild(h('div', { 'class': 'hint', text: 'The pool itself cannot be described. Annotations are kept inside each share.' }));
+    return box;
+  }
+  var note = h('textarea', { id: 'insp-note', rows: '3', value: a && !a.skipped ? a.note : '', disabled: ro, placeholder: 'What is this for?' });
+  function save() {
+    if (ro) return;
+    var cur = ann.get(n.id), rec = cur && !cur.skipped ? cur : blankAnn(false);
+    rec.note = note.value.trim();
+    if (hasContent(rec)) { ann.set(n.id, rec); toast('Saved to ' + n.share.name + '/.reflection'); }
+    else { ann.delete(n.id); toast('Nothing recorded for this item.'); }
+    render();
+  }
+  note.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } });
+  var marks = badges(n);
+  box.appendChild(h('div', { 'class': 'field' }, h('label', { 'for': 'insp-note', text: 'What is it for?' }), note,
+    (a && (a.owner || a.reviewAfter)) ? h('div', { 'class': 'hint', text: (a.owner ? 'Owner: ' + a.owner + '. ' : '') + (a.reviewAfter ? 'Review after ' + a.reviewAfter + '.' : '') }) : null,
+    marks.length ? h('div', { 'class': 'actions' }, marks) : null,
+    h('div', { 'class': 'actions' }, h('button', { 'class': 'btn small primary', type: 'button', disabled: ro, onclick: save }, 'Save', h('span', { 'class': 'kbd', text: 'Ctrl+Enter' })),
+      ro ? h('span', { 'class': 'hint', text: 'Read-only mode' }) : null)));
+
+  var acts = h('div', { 'class': 'actions' });
+  if (n.kind === 'dir') acts.appendChild(h('button', { 'class': 'btn small', type: 'button', onclick: function () { openFolder(n, null); if (state.screen !== 'space') go('space'); } }, 'Open'));
+  if (ctx !== 'space' || n.parent !== space.cur) {
+    acts.appendChild(h('button', { 'class': 'btn small', type: 'button', onclick: function () { space.cur = n.parent; space.sel = n.id; space.focusList = true; go('space'); } }, 'Show in Space'));
+  }
+  if (n.kind === 'dir') {
+    acts.appendChild(h('button', { 'class': 'btn small', type: 'button', onclick: function () { resetFind(); find.under = n; go('find'); } }, 'Find inside'));
+    acts.appendChild(h('button', { 'class': 'btn small', type: 'button', onclick: function () { rv.spec = defaultSpec(); rv.spec.under = n; rvStart(); go('review'); } }, 'Review what is inside'));
+  }
+  acts.appendChild(h('button', { 'class': 'btn small', type: 'button', disabled: true }, 'Quarantine', h('span', { 'class': 'later', text: 'later' })));
+  box.appendChild(acts);
+  return box;
+}
+
+/* ------------------------------------------------------------------- space */
+
+var space = { cur: root, sel: null, map: 'treemap', colour: 'type', focusList: false };
+function spaceKids(n) { return n.children.slice().sort(function (a, b) { return sz(b) - sz(a) || a.id - b.id; }); }
+function restBytes(n) { return n.rest ? (state.sizeMode === 'disk' ? n.rest.disk : n.rest.size) : 0; }
+function openFolder(n, selId) {
+  var kids = spaceKids(n);
+  space.cur = n;
+  space.sel = selId || (kids.length ? kids[0].id : null);
+  space.focusList = true;
+  if (state.screen === 'space') render();
+}
+function selectSpace(id) {
+  space.sel = id;
+  markRows('space-rows', id);
+  markMapSel(id);
+  var slot = document.getElementById('space-insp');
+  if (slot) slot.replaceChildren(inspector(byId(id), 'space'));
+}
+function spaceRow(n, denom, snapBytes) {
+  var a = ann.get(n.id), dn = a && a.displayName;
+  return h('tr', { 'data-id': n.id, tabindex: '-1', title: n.kind === 'file' && !n.counted ? 'Hardlinked. Its size is counted at its other name, so this bar is an outline.' : null },
+    h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, icon(n.kind), dn ? h('span', { 'class': 'dn', text: dn }) : null, h('span', { 'class': 'fs' + (dn ? ' sub' : ''), text: n.name }), badges(n))),
+    h('td', { 'class': 'c-bar' }, compBar(n, denom, space.colour, snapBytes)),
+    h('td', { 'class': 'num c-pct', text: n.excluded ? '' : pct(sz(n) + snapBytes, denom) }),
+    h('td', { 'class': 'num c-size', text: n.excluded ? 'unknown' : fmtSize(sz(n) + snapBytes) }),
+    h('td', { 'class': 'num c-items', text: n.kind === 'dir' && !n.excluded ? fmtInt(n.files + n.dirs) : '' }),
+    h('td', { 'class': 'c-age', title: fmtDate(n.maxM), text: fmtAge(n.maxM) }));
+}
+
+/* Map: what to draw for one folder. Children too small to see are merged into one "smaller" block. */
+function mapItems(n, minFrac, maxN, withSnap) {
+  var kids = spaceKids(n), total = sz(n), out = [], restV = restBytes(n), restC = n.rest ? n.rest.count : 0;
+  kids.forEach(function (c) {
+    var v = (c.kind === 'file' && !c.counted) ? 0 : sz(c);
+    if (v <= 0) return;
+    if (out.length < maxN && v / total >= minFrac) out.push({ n: c, v: v });
+    else { restV += v; restC += 1; }
+  });
+  if (withSnap) {
+    var s = n === root ? { bytes: snapTotal(), count: 0 } : n.share === n ? snapOf(n) : { bytes: 0, count: 0 };
+    if (s.bytes > 0) out.push({ snap: true, v: s.bytes, count: s.count });
+  }
+  if (restV > 0) out.push({ rest: true, v: restV, count: restC });
+  out.sort(function (a, b) { return b.v - a.v; });
+  return out;
+}
+function worstRatio(row, sum, shortSide) {
+  var mx = 0, mn = Infinity, i;
+  for (i = 0; i < row.length; i++) { if (row[i].a > mx) mx = row[i].a; if (row[i].a < mn) mn = row[i].a; }
+  var s2 = shortSide * shortSide, q2 = sum * sum;
+  return Math.max(s2 * mx / q2, q2 / (s2 * mn));
+}
+/* Squarified treemap layout (Bruls, Huizing, van Wijk). items must be sorted largest first. */
+function squarify(items, x, y, w, hh) {
+  var out = [], total = 0, i;
+  for (i = 0; i < items.length; i++) total += items[i].v;
+  if (!(total > 0) || w <= 1 || hh <= 1) return out;
+  var scale = w * hh / total;
+  var rest = items.map(function (it) { return { it: it, a: it.v * scale }; });
+  var rx = x, ry = y, rw = w, rh = hh, at = 0;
+  while (at < rest.length && rw > 0.5 && rh > 0.5) {
+    var shortSide = Math.min(rw, rh), row = [rest[at]], sum = rest[at].a, worst = worstRatio(row, sum, shortSide), j = at + 1;
+    while (j < rest.length) {
+      var cand = row.concat([rest[j]]), w2 = worstRatio(cand, sum + rest[j].a, shortSide);
+      if (w2 > worst) break;
+      row = cand; sum += rest[j].a; worst = w2; j++;
+    }
+    var k, pos;
+    if (rw >= rh) {
+      var sw = sum / rh; pos = ry;
+      for (k = 0; k < row.length; k++) { var ch = row[k].a / sw; out.push({ it: row[k].it, x: rx, y: pos, w: sw, h: ch }); pos += ch; }
+      rx += sw; rw -= sw;
+    } else {
+      var sh = sum / rw; pos = rx;
+      for (k = 0; k < row.length; k++) { var cw = row[k].a / sh; out.push({ it: row[k].it, x: pos, y: ry, w: cw, h: sh }); pos += cw; }
+      ry += sh; rh -= sh;
+    }
+    at = j;
+  }
+  return out;
+}
+function cellClass(n) {
+  var age = space.colour === 'age', parts = age ? n.ab : n.tc, cls = age ? AGE_CLS : TYPE_CLS, sum = 0, best = 0, i;
+  for (i = 0; i < parts.length; i++) { sum += parts[i]; if (parts[i] > parts[best]) best = i; }
+  if (!(sum > 0)) return 'k-other';
+  if (age) return cls[best];
+  return parts[best] / sum >= 0.5 ? cls[best] : 'k-other';
+}
+function px1(v) { return v.toFixed(1) + 'px'; }
+function cell(r) {
+  var it = r.it, cls = 'cell ', label, id = null;
+  if (it.snap) { cls += 'k-snap'; label = 'Snapshots'; }
+  else if (it.rest) { cls += 'k-rest'; label = fmtInt(it.count) + ' smaller'; }
+  else { cls += cellClass(it.n); label = it.n === root ? 'tank' : displayOr(it.n); id = it.n.id; }
+  var w = Math.max(0, r.w - 2), hh = Math.max(0, r.h - 2);
+  var c = h('div', { 'class': cls, style: { left: px1(r.x + 1), top: px1(r.y + 1), width: px1(w), height: px1(hh) } });
+  if (id !== null) c.setAttribute('data-id', id);
+  c._tip = it;
+  /* A label is drawn only where it fits; everything else is in the tooltip and the list. */
+  if (w >= 64 && hh >= 20) c.appendChild(h('b', { 'class': it.n ? 'fs' : null, text: label }));
+  if (w >= 64 && hh >= 36) c.appendChild(h('span', { text: fmtSize(it.v) }));
+  return c;
+}
+function drawTreemap(el, W, H) {
+  var cur = space.cur, items = mapItems(cur, 0.004, 40, true);
+  if (!items.length) { el.appendChild(h('div', { 'class': 'map-empty', text: 'This folder is empty.' })); return; }
+  if (items.length === 1 && items[0].rest) {
+    el.appendChild(h('div', { 'class': 'map-empty', text: fmtInt(items[0].count) + ' items, and none is large enough to draw: the average is ' + fmtSize(items[0].v / items[0].count) + '. The list below has them all, largest first.' }));
+    return;
+  }
+  squarify(items, 0, 0, W, H).forEach(function (r) {
+    var n = r.it.n;
+    if (n && n.kind === 'dir' && r.w >= 96 && r.h >= 64 && (n.children.length || n.rest)) {
+      var gw = r.w - 2, gh = r.h - 2;
+      var g = h('div', { 'class': 'grp', style: { left: px1(r.x + 1), top: px1(r.y + 1), width: px1(gw), height: px1(gh) } });
+      g.appendChild(h('div', { 'class': 'grp-h fs', 'data-id': n.id, text: n.name + '  ' + fmtSize(r.it.v) }));
+      squarify(mapItems(n, 0.012, 28, false), 2, 19, gw - 4, gh - 21).forEach(function (q) { g.appendChild(cell(q)); });
+      el.appendChild(g);
+    } else el.appendChild(cell(r));
+  });
+}
+function drawIcicle(el, W, H) {
+  var rowH = Math.floor(H / 4);
+  function level(parent, x0, x1, depth) {
+    if (depth > 3 || x1 - x0 < 6) return;
+    var items = mapItems(parent, 0, 400, depth === 1), total = 0, x = x0, restV = 0, restC = 0;
+    items.forEach(function (it) { total += it.v; });
+    if (!(total > 0)) return;
+    items.forEach(function (it) {
+      var w = (x1 - x0) * it.v / total;
+      if (it.rest || w < 3) { restV += it.v; restC += it.rest ? it.count : 1; return; }
+      el.appendChild(cell({ it: it, x: x, y: depth * rowH, w: w, h: rowH }));
+      if (it.n && it.n.kind === 'dir') level(it.n, x, x + w, depth + 1);
+      x += w;
+    });
+    if (restV > 0 && (x1 - x0) * restV / total >= 2) el.appendChild(cell({ it: { rest: true, v: restV, count: restC }, x: x, y: depth * rowH, w: (x1 - x0) * restV / total, h: rowH }));
+  }
+  el.appendChild(cell({ it: { n: space.cur, v: sz(space.cur) }, x: 0, y: 0, w: W, h: rowH }));
+  level(space.cur, 0, W, 1);
+}
+function markMapSel(id) {
+  var cells = document.querySelectorAll('#space-map [data-id]');
+  for (var i = 0; i < cells.length; i++) cells[i].classList.toggle('sel', Number(cells[i].getAttribute('data-id')) === id);
+}
+function drawMap() {
+  var el = document.getElementById('space-map');
+  if (!el) return;
+  el.replaceChildren();
+  var W = el.clientWidth, H = el.clientHeight;
+  if (W < 40 || H < 40) return;
+  if (space.map === 'icicle') drawIcicle(el, W, H); else drawTreemap(el, W, H);
+  markMapSel(space.sel);
+}
+var tipEl = null;
+function tipFor(t) {
+  var it = t._tip || { n: byId(Number(t.getAttribute('data-id'))) };
+  if (it.snap) return { v: fmtSize(it.v), name: 'Held by snapshots', lines: ['Not browsable. Freed only when the snapshots that hold it are destroyed.'] };
+  if (it.rest) return { v: fmtSize(it.v), name: fmtInt(it.count) + ' smaller items', lines: ['Too small to draw one by one. They are all in the list.'] };
+  var n = it.n, lines = [pct(sz(n), sz(space.cur)) + ' of ' + (space.cur === root ? 'tank' : space.cur.name)];
+  if (n.kind === 'dir') lines.push(fmtInt(n.files) + ' files in ' + fmtInt(n.dirs) + ' folders');
+  lines.push('Changed ' + fmtAge(n.maxM));
+  return { v: fmtSize(sz(n)), name: n === root ? 'tank' : 'tank/' + relPath(n), lines: lines };
+}
+function showTip(d, x, y) {
+  if (!tipEl) { tipEl = h('div', { 'class': 'tip', role: 'tooltip' }); document.body.appendChild(tipEl); }
+  setKids(tipEl, [h('b', { text: d.v }), h('span', { 'class': 'fs', text: d.name }), d.lines.map(function (l) { return h('span', { text: l }); })]);
+  tipEl.hidden = false;
+  var w = tipEl.offsetWidth, hh = tipEl.offsetHeight, left = Math.min(window.innerWidth - w - 8, x + 14), top = y + 16;
+  if (top + hh > window.innerHeight - 8) top = y - hh - 10;
+  tipEl.style.setProperty('left', Math.max(8, left) + 'px');
+  tipEl.style.setProperty('top', Math.max(8, top) + 'px');
+}
+function hideTip() { if (tipEl) tipEl.hidden = true; }
+
+SCREENS.space = function () {
+  var cur = space.cur, atRoot = cur === root, isShare = cur.share === cur;
+  var snap = isShare ? snapOf(cur) : { bytes: 0, count: 0 };
+  var denom = sz(cur) + snap.bytes + (atRoot ? snapTotal() : 0);
+  var kids = spaceKids(cur), name = atRoot ? 'tank' : cur.name;
+  if (space.sel === null && kids.length) space.sel = kids[0].id;
+  var wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(guide('Double-click a row or a block to open a folder. Places worth opening: vms (a few huge files; switch Size to see compression), surveillance/nvr/clips (396,000 small files in one folder), media/torrents/complete (hardlinks). Colour by Age shows where old data sits. Snapshot space can be switched on from the Storage screen.'));
+
+  var crumbs = h('nav', { 'class': 'crumbs', 'aria-label': 'Folder path' }), chain = [], p = cur;
+  while (p) { chain.unshift(p); p = p.parent; }
+  chain.forEach(function (c, i) {
+    if (i) crumbs.appendChild(h('span', { 'class': 'sep', text: '/' }));
+    var label = c === root ? 'tank' : c.name;
+    if (c === cur) crumbs.appendChild(h('b', { 'class': 'fs', text: label }));
+    else crumbs.appendChild(h('button', { 'class': 'crumb fs', type: 'button', onclick: function () { openFolder(c, null); } }, label));
+  });
+  wrap.appendChild(crumbs);
+  var disk = state.sizeMode === 'disk';
+  wrap.appendChild(h('div', { 'class': 'sh' }, h('h1', { text: fmtSize(denom) }),
+    h('span', { 'class': 'sub', text: (disk ? 'on disk' : 'apparent') + ' (' + fmtSize(disk ? cur.size : cur.disk) + (disk ? ' apparent' : ' on disk') + '), ' +
+      fmtInt(cur.files) + ' files in ' + fmtInt(cur.dirs) + ' folders, newest change ' + fmtAge(cur.maxM) })));
+  wrap.appendChild(h('div', { 'class': 'ctls' },
+    seg('Size', [['disk', 'On disk'], ['apparent', 'Apparent']], state.sizeMode, function (v) { state.sizeMode = v; render(); }),
+    seg('Map', [['treemap', 'Treemap'], ['icicle', 'Icicle'], ['off', 'Off']], space.map, function (v) { space.map = v; render(); }),
+    seg('Colour', [['type', 'Type'], ['age', 'Age']], space.colour, function (v) { space.colour = v; render(); })));
+
+  var main = h('div');
+  if (space.map !== 'off') {
+    var mapEl = h('div', { 'class': 'map', id: 'space-map', role: 'img', 'aria-label': 'Map of ' + name + '. The list below holds the same data.' });
+    mapEl.addEventListener('pointermove', function (e) {
+      var t = e.target.closest('.cell, .grp-h');
+      if (!t || !mapEl.contains(t)) { hideTip(); return; }
+      showTip(tipFor(t), e.clientX, e.clientY);
+    });
+    mapEl.addEventListener('pointerleave', hideTip);
+    mapEl.addEventListener('click', function (e) {
+      var t = e.target.closest('[data-id]');
+      if (t && mapEl.contains(t)) selectSpace(Number(t.getAttribute('data-id')));
+    });
+    mapEl.addEventListener('dblclick', function (e) {
+      var t = e.target.closest('[data-id]');
+      if (!t || !mapEl.contains(t)) return;
+      var n = byId(Number(t.getAttribute('data-id')));
+      if (n.kind === 'dir' && n !== space.cur) openFolder(n, null);
+    });
+    main.appendChild(mapEl);
+  }
+  main.appendChild(h('div', { 'class': 'map-note' }, legend(space.colour, state.snap === 'some'),
+    space.map !== 'off' ? h('span', { text: 'Click selects. Double-click opens a folder.' }) : null));
+
+  var tbody = h('tbody', { id: 'space-rows' });
+  var entries = kids.map(function (c) { return { n: c, v: sz(c) + (atRoot ? snapOf(c).bytes : 0) }; });
+  if (snap.bytes > 0) entries.push({ snap: true, v: snap.bytes });
+  entries.sort(function (a, b) { return b.v - a.v; });
+  var sumRows = 0;
+  entries.forEach(function (en) {
+    if (en.snap) {
+      tbody.appendChild(h('tr', { 'class': 'pseudo' },
+        h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, h('span', { text: 'Held by snapshots' }), h('span', { 'class': 'mark', text: fmtInt(snap.count) + ' snapshots' }), h('span', { 'class': 'mark', text: 'not browsable' }))),
+        h('td', { 'class': 'c-bar' }, h('div', { 'class': 'bar' }, h('div', { 'class': 'fill', style: { width: (en.v / denom * 100).toFixed(2) + '%' } }, h('i', { 'class': 'k-snap', style: { 'flex-grow': '1' } })))),
+        h('td', { 'class': 'num c-pct', text: pct(en.v, denom) }), h('td', { 'class': 'num c-size', text: fmtSize(en.v) }), h('td', { 'class': 'c-items' }), h('td', { 'class': 'c-age' })));
+      return;
+    }
+    sumRows += sz(en.n);
+    tbody.appendChild(spaceRow(en.n, denom, atRoot ? snapOf(en.n).bytes : 0));
+  });
+  if (cur.rest) {
+    var rb = restBytes(cur);
+    sumRows += rb;
+    tbody.appendChild(h('tr', { 'class': 'pseudo' },
+      h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, h('span', { text: fmtInt(cur.rest.count) + ' more ' + cur.rest.what })),
+        h('div', { 'class': 'where', text: 'The real list keeps scrolling, largest first. The mockup generates only the top of it.' })),
+      h('td', { 'class': 'c-bar' }, h('div', { 'class': 'bar' }, h('div', { 'class': 'fill', style: { width: (denom > 0 ? rb / denom * 100 : 0).toFixed(2) + '%' } },
+        h('i', { 'class': space.colour === 'age' ? AGE_CLS[bucketOfDays(cur.rest.age)] : TYPE_CLS[cur.rest.cls], style: { 'flex-grow': '1' } })))),
+      h('td', { 'class': 'num c-pct', text: pct(rb, denom) }), h('td', { 'class': 'num c-size', text: fmtSize(rb) }),
+      h('td', { 'class': 'num c-items', text: fmtInt(cur.rest.files + cur.rest.dirs) }), h('td', { 'class': 'c-age' })));
+  }
+  tbody.addEventListener('click', function (e) { var tr = e.target.closest('tr[data-id]'); if (tr) selectSpace(Number(tr.getAttribute('data-id'))); });
+  tbody.addEventListener('dblclick', function (e) {
+    var tr = e.target.closest('tr[data-id]');
+    if (!tr) return;
+    var n = byId(Number(tr.getAttribute('data-id')));
+    if (n.kind === 'dir') openFolder(n, null);
+  });
+  tbody.addEventListener('keydown', function (e) {
+    listKeys(e, tbody, space.sel, selectSpace, function (id) { var n = byId(id); if (n.kind === 'dir') openFolder(n, null); },
+      cur.parent ? function () { openFolder(cur.parent, cur.id); } : null);
+  });
+  var panel = h('div', { 'class': 'panel' }, h('div', { 'class': 'tw' }, h('table', { 'class': 'list' },
+    h('thead', null, h('tr', null, h('th', { text: fmtInt(cur.children.length + (cur.rest ? cur.rest.count : 0)) + ' items in ' + name }), h('th', { 'class': 'c-bar', text: 'Share of ' + name }),
+      h('th', { 'class': 'num c-pct' }), h('th', { 'class': 'num c-size', text: disk ? 'On disk' : 'Apparent' }), h('th', { 'class': 'num c-items', text: 'Items inside' }), h('th', { 'class': 'c-age', text: 'Changed' }))),
+    tbody)));
+  var over = sumRows - sz(cur);
+  if (over > sz(cur) * 0.001) {
+    panel.appendChild(h('div', { 'class': 'pad hint', text: 'These rows add up to ' + fmtSize(over) + ' more than the folder’s total. Hardlinked files are counted once, at one of their names; the others are drawn as outlines.' }));
+  }
+  main.appendChild(panel);
+  wrap.appendChild(h('div', { 'class': 'split' }, main,
+    h('div', { id: 'space-insp' }, space.sel !== null ? inspector(byId(space.sel), 'space') : h('div', { 'class': 'panel pad muted', text: 'This folder is empty.' }))));
+  return wrap;
+};
+function spaceAfterRender() {
+  drawMap();
+  markRows('space-rows', space.sel);
+  if (space.focusList) {
+    space.focusList = false;
+    var r = view.querySelector('#space-rows tr.sel');
+    if (r) { try { r.focus({ preventScroll: true }); } catch (e) {} }
+  }
+}
+var mapFrame = 0;
+if (window.ResizeObserver) {
+  new ResizeObserver(function () {
+    if (state.screen !== 'space') return;
+    cancelAnimationFrame(mapFrame);
+    mapFrame = requestAnimationFrame(drawMap);
+  }).observe(view);
+}
+
+/* -------------------------------------------------------------------- find */
+
+var find = { q: '', kind: 'file', share: 0, type: '', minSize: 0, older: 0, st: '', prefix: '', under: null, sort: 'size', desc: true, sel: null, limit: 60, preset: 'files', plan: -1 };
+function resetFind() {
+  find.q = ''; find.kind = 'file'; find.share = 0; find.type = ''; find.minSize = 0; find.older = 0; find.st = ''; find.prefix = ''; find.under = null;
+  find.sort = 'size'; find.desc = true; find.sel = null; find.limit = 60; find.preset = ''; find.plan = -1;
+}
+var FIND_PRESETS = [
+  ['files', 'Largest files', function () { find.kind = 'file'; }],
+  ['folders', 'Largest folders', function () { find.kind = 'dir'; }],
+  ['old', 'Old and large', function () { find.kind = 'file'; find.minSize = GiB; find.older = 730; }],
+  ['todo', 'Folders not annotated yet', function () { find.kind = 'dir'; find.st = 'unannotated'; }]
+];
+var FIND_PLANNED = [
+  ['Stale', 'Items older than the age you set per dataset. The same table, with a column for which clock made the call.'],
+  ['Duplicates', 'Sets of identical files from the on-demand job. Rows are grouped into sets, each with the space it wastes. Nothing is removed for you.'],
+  ['Orphans', 'Downloads that were never imported (one link only), and appdata folders with no matching container.'],
+  ['Poorly named', 'Names that look random, each with a suggested display name. “Review these” opens the review screen with the display name field first.'],
+  ['Grew since last scan', 'Folders ordered by how much they grew between the last two scans.']
+];
+function findMatches() {
+  var q = find.q.trim().toLowerCase(), out = [], i;
+  for (i = 0; i < nodes.length; i++) {
+    var n = nodes[i], a = ann.get(n.id);
+    if (!n.share) continue;
+    if (find.kind && n.kind !== find.kind) continue;
+    if (find.share && n.share.id !== find.share) continue;
+    if (find.type && n.type !== find.type) continue;
+    if (find.minSize && sz(n) < find.minSize) continue;
+    if (find.older && ageDays(n) < find.older) continue;
+    if (find.st === 'annotated' && !(a && !a.skipped)) continue;
+    if (find.st === 'unannotated' && a) continue;
+    if (find.st === 'skipped' && !(a && a.skipped)) continue;
+    if (find.prefix && !(a && a.prefixes.indexOf(find.prefix) >= 0)) continue;
+    if (find.under && !isUnder(n, find.under)) continue;
+    if (q && n.name.toLowerCase().indexOf(q) < 0 && !(a && (a.note.toLowerCase().indexOf(q) >= 0 || a.displayName.toLowerCase().indexOf(q) >= 0))) continue;
+    out.push(n);
+  }
+  var dir = find.desc ? -1 : 1;
+  out.sort(function (x, y) {
+    var d;
+    if (find.sort === 'name') d = x.name.toLowerCase() < y.name.toLowerCase() ? -1 : x.name.toLowerCase() > y.name.toLowerCase() ? 1 : 0;
+    else if (find.sort === 'changed') d = x.maxM - y.maxM;
+    else if (find.sort === 'type') d = x.type < y.type ? -1 : x.type > y.type ? 1 : 0;
+    else d = sz(x) - sz(y);
+    return d * dir || x.id - y.id;
+  });
+  return out;
+}
+function selectFind(id) {
+  find.sel = id;
+  markRows('find-rows', id);
+  var slot = document.getElementById('find-insp');
+  if (slot) slot.replaceChildren(inspector(byId(id), 'find'));
+}
+function fillFind() {
+  var box = document.getElementById('find-results');
+  if (!box) return;
+  var res = findMatches(), shown = res.slice(0, find.limit), total = 0, max = 0;
+  res.forEach(function (n) { if (n.kind === 'file' && n.counted) total += sz(n); });
+  shown.forEach(function (n) { if (sz(n) > max) max = sz(n); });
+  if (find.sel !== null && res.indexOf(byId(find.sel)) < 0) find.sel = null;
+  if (find.sel === null && res.length) find.sel = res[0].id;
+
+  var what = find.kind === 'dir' ? ' folders' : find.kind === 'file' ? ' files' : ' items';
+  var sum = h('div', { 'class': 'sum' },
+    h('div', null, h('b', { text: fmtInt(res.length) + what }), find.kind === 'file' ? ', ' + fmtSize(total) + ' in total' : '',
+      find.under ? h('span', null, ' ', h('span', { 'class': 'scope' }, 'inside ', h('span', { 'class': 'fs', text: 'tank/' + relPath(find.under) }),
+        h('button', { type: 'button', 'aria-label': 'Search everywhere', onclick: function () { find.under = null; fillFind(); } }, '×'))) : null),
+    h('button', { 'class': 'btn small primary', type: 'button', disabled: !res.length, onclick: function () {
+      rv.spec = defaultSpec();
+      rv.spec.kind = find.kind || 'file'; rv.spec.shares = find.share ? [find.share] : []; rv.spec.types = find.type ? [find.type] : [];
+      rv.spec.minSize = find.minSize; rv.spec.older = find.older; rv.spec.name = find.q.trim(); rv.spec.under = find.under;
+      rvStart(); go('review');
+    } }, 'Review these'));
+
+  function th(key, label, cls) {
+    var active = find.sort === key;
+    return h('th', { 'class': cls, 'aria-sort': active ? (find.desc ? 'descending' : 'ascending') : null },
+      h('button', { type: 'button', onclick: function () { if (find.sort === key) find.desc = !find.desc; else { find.sort = key; find.desc = key === 'size'; } fillFind(); } },
+        label + (active ? (find.desc ? ' ↓' : ' ↑') : '')));
+  }
+  var tbody = h('tbody', { id: 'find-rows' });
+  shown.forEach(function (n) {
+    var a = ann.get(n.id), dn = a && a.displayName;
+    tbody.appendChild(h('tr', { 'data-id': n.id, tabindex: n.id === find.sel ? '0' : '-1', 'class': n.id === find.sel ? 'sel' : null },
+      h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, icon(n.kind), dn ? h('span', { 'class': 'dn', text: dn }) : null, h('span', { 'class': 'fs' + (dn ? ' sub' : ''), text: n.name }), badges(n)),
+        h('div', { 'class': 'where fs', text: parentPath(n) })),
+      h('td', { 'class': 'c-bar' }, (n.kind === 'file' && !n.counted) ? compBar(n, max, 'plain', 0) : plainBar(sz(n), max)),
+      h('td', { 'class': 'num c-size', text: fmtSize(sz(n)) }),
+      h('td', { 'class': 'c-type', text: n.kind === 'dir' ? 'folder' : n.type }),
+      h('td', { 'class': 'c-age', title: fmtDate(n.maxM), text: fmtAge(n.maxM) }),
+      h('td', { 'class': 'c-note', title: a && a.note ? a.note : null, text: a && a.note ? a.note : '' })));
+  });
+  tbody.addEventListener('click', function (e) { var tr = e.target.closest('tr[data-id]'); if (tr) selectFind(Number(tr.getAttribute('data-id'))); });
+  tbody.addEventListener('keydown', function (e) { listKeys(e, tbody, find.sel, selectFind, null, null); });
+
+  var panel = h('div', { 'class': 'panel' }, sum);
+  if (res.length) {
+    panel.appendChild(h('div', { 'class': 'tw' }, h('table', { 'class': 'list find-t' },
+      h('thead', null, h('tr', null, th('name', 'Name', null), h('th', { 'class': 'c-bar' }), th('size', 'Size', 'num c-size'), th('type', 'Type', 'c-type'), th('changed', 'Changed', 'c-age'), h('th', { 'class': 'c-note', text: 'Note' }))),
+      tbody)));
+    if (res.length > shown.length) {
+      panel.appendChild(h('div', { 'class': 'pad' }, h('button', { 'class': 'btn small', type: 'button', onclick: function () { find.limit += 60; fillFind(); } }, 'Show 60 more'),
+        h('span', { 'class': 'hint', text: '  ' + fmtInt(shown.length) + ' of ' + fmtInt(res.length) + ' shown. The app loads more as you scroll.' })));
+    }
+  } else {
+    panel.appendChild(h('div', { 'class': 'pad' }, 'Nothing matches these filters. ', h('button', { 'class': 'btn link', type: 'button', onclick: function () { resetFind(); render(); } }, 'Clear the filters')));
+  }
+  setKids(box, h('div', { 'class': 'split' }, panel, h('div', { id: 'find-insp' }, find.sel !== null ? inspector(byId(find.sel), 'find') : null)));
+}
+SCREENS.find = function () {
+  var wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(guide('Filters apply at once; the search box waits a moment after you stop typing, as the real one will. It matches names and annotation text (try “lease” or “scan”). “Review these” turns the current filter into a review queue.'));
+  wrap.appendChild(h('div', { 'class': 'sh' }, h('h1', { text: 'Find' }), h('span', { 'class': 'sub', text: 'Files and folders by size, age, type, share, prefix and annotation.' })));
+
+  function touch() { find.preset = ''; find.plan = -1; find.limit = 60; var chips = wrap.querySelectorAll('.presets .chipb'); for (var i = 0; i < chips.length; i++) chips[i].setAttribute('aria-pressed', 'false'); var pn = document.getElementById('find-plan'); if (pn) pn.hidden = true; }
+  var pres = h('div', { 'class': 'presets' });
+  FIND_PRESETS.forEach(function (p) {
+    pres.appendChild(h('button', { 'class': 'chipb', type: 'button', 'aria-pressed': find.preset === p[0] ? 'true' : 'false', onclick: function () { var u = find.under; resetFind(); find.under = u; p[2](); find.preset = p[0]; render(); } }, p[1]));
+  });
+  FIND_PLANNED.forEach(function (p, i) {
+    pres.appendChild(h('button', { 'class': 'chipb plan', type: 'button', 'aria-pressed': find.plan === i ? 'true' : 'false', onclick: function () { find.plan = find.plan === i ? -1 : i; find.preset = ''; render(); } }, p[0], ' ', h('span', { 'class': 'later', text: 'later' })));
+  });
+  wrap.appendChild(pres);
+  wrap.appendChild(h('div', { 'class': 'banner', id: 'find-plan', hidden: find.plan < 0 },
+    h('div', null, h('b', { text: find.plan >= 0 ? FIND_PLANNED[find.plan][0] + ' (later release). ' : '' }), find.plan >= 0 ? FIND_PLANNED[find.plan][1] : '')));
+
+  var search = h('input', { id: 'find-q', type: 'search', value: find.q, placeholder: 'Name or annotation text', autocomplete: 'off' }), timer = 0;
+  search.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(function () { find.q = search.value; touch(); fillFind(); }, 300); });
+  search.addEventListener('keydown', function (e) { if (e.key === 'Enter') { clearTimeout(timer); find.q = search.value; touch(); fillFind(); } });
+  function pick(label, id, opts, value, set) {
+    return h('label', { 'for': id }, label, selectEl(id, opts, value, function (v) { set(v); touch(); fillFind(); }));
+  }
+  var TYPES = [['', 'any type']].concat(['video', 'audio', 'image', 'document', 'archive', 'disk-image', 'text', 'subtitle', 'other'].map(function (t) { return [t, t]; }));
+  wrap.appendChild(h('div', { 'class': 'filters' },
+    h('label', { 'class': 'grow', 'for': 'find-q' }, 'Search', search),
+    pick('Kind', 'find-kind', [['file', 'files'], ['dir', 'folders'], ['', 'both']], find.kind, function (v) { find.kind = v; }),
+    pick('Share', 'find-share', [[0, 'all shares']].concat(root.children.map(function (s) { return [s.id, s.name]; })), find.share, function (v) { find.share = Number(v); }),
+    pick('Type', 'find-type', TYPES, find.type, function (v) { find.type = v; }),
+    pick('At least', 'find-min', SIZE_OPTS, find.minSize, function (v) { find.minSize = Number(v); }),
+    pick('Not changed for', 'find-old', [[0, 'any time'], [365, '1 year'], [730, '2 years'], [1826, '5 years']], find.older, function (v) { find.older = Number(v); }),
+    pick('Annotation', 'find-st', [['', 'any'], ['unannotated', 'not annotated'], ['annotated', 'annotated'], ['skipped', 'skipped']], find.st, function (v) { find.st = v; }),
+    pick('Prefix', 'find-px', [['', 'any']].concat(prefixes.map(function (p) { return [p.name, p.name]; })), find.prefix, function (v) { find.prefix = v; }),
+    seg('Size', [['disk', 'On disk'], ['apparent', 'Apparent']], state.sizeMode, function (v) { state.sizeMode = v; render(); })));
+  wrap.appendChild(h('div', { id: 'find-results' }));
+  return wrap;
+};
+
+/* ---------------------------------------------------------------- overview */
+
+SCREENS.overview = function () {
+  var snaps = snapTotal(), used = root.disk + snaps, free = CAPACITY - used, sumTc = root.tc[0] + root.tc[1] + root.tc[2] + root.tc[3];
+  var wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(guide('Start here. “Scan now” at the top opens the new intensity dialog and then shows scan progress. “Try a state” switches the whole mockup into a stale index or read-only mode. The numbers are invented but sized like the reference pool: about a million files, 3.8 TiB on disk, 13 datasets.'));
+
+  var cap = h('div', { 'class': 'capbar', role: 'img', 'aria-label': 'Pool capacity: ' + fmtSize(used) + ' used of ' + fmtSize(CAPACITY) });
+  var leg = h('div', { 'class': 'legend' });
+  CLASSES.forEach(function (label, i) {
+    var b = root.disk * root.tc[i] / sumTc;
+    cap.appendChild(h('i', { 'class': TYPE_CLS[i], title: label + ': ' + fmtSize(b), style: { 'flex-grow': (b / CAPACITY * 1000).toFixed(2) } }));
+    leg.appendChild(h('span', { 'class': 'legend-i' }, h('i', { 'class': 'sw ' + TYPE_CLS[i] }), label + ' ' + fmtSize(b)));
+  });
+  if (snaps > 0) {
+    cap.appendChild(h('i', { 'class': 'k-snap', title: 'Held by snapshots: ' + fmtSize(snaps), style: { 'flex-grow': (snaps / CAPACITY * 1000).toFixed(2) } }));
+    leg.appendChild(h('span', { 'class': 'legend-i' }, h('i', { 'class': 'sw k-snap' }), 'Held by snapshots ' + fmtSize(snaps)));
+  }
+  cap.appendChild(h('i', { 'class': 'free', style: { 'flex-grow': (free / CAPACITY * 1000).toFixed(2) } }));
+  leg.appendChild(h('span', { 'class': 'legend-i' }, h('i', { 'class': 'sw k-rest' }), 'Free ' + fmtSize(free)));
+  wrap.appendChild(h('div', { 'class': 'panel pad' },
+    h('div', { 'class': 'hero' }, h('b', { text: fmtSize(used) }), h('span', { 'class': 'sub', text: 'used of ' + fmtSize(CAPACITY) + ' on tank. ' + fmtSize(free) + ' free. ' + fmtInt(root.files) + ' files in ' + fmtInt(root.dirs) + ' folders.' })),
+    cap, leg));
+
+  var withSnap = state.snap === 'some', denom = 0;
+  var shares = root.children.slice().sort(function (a, b) { return (sz(b) + snapOf(b).bytes) - (sz(a) + snapOf(a).bytes); });
+  shares.forEach(function (s) { denom += sz(s) + snapOf(s).bytes; });
+  var tbody = h('tbody');
+  shares.forEach(function (s) {
+    var sn = snapOf(s), cov = s.size > 0 ? coveredBytes(s) / s.size * 100 : 0;
+    var tr = h('tr', { tabindex: '0' },
+      h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, icon('dir'), h('span', { 'class': 'fs', text: s.name }), badges(s))),
+      h('td', { 'class': 'c-bar' }, compBar(s, denom, 'type', sn.bytes)),
+      h('td', { 'class': 'num c-size', text: fmtSize(sz(s) + sn.bytes) }),
+      withSnap ? h('td', { 'class': 'num c-snap', text: sn.bytes ? fmtSize(sn.bytes) : '' }) : null,
+      h('td', { 'class': 'num c-items', text: fmtInt(s.files + s.dirs) }),
+      h('td', { 'class': 'c-cov' }, h('div', { 'class': 'nm' }, h('div', { 'class': 'meter', style: { flex: '1' } }, h('i', { style: { width: cov.toFixed(1) + '%' } })), h('span', { 'class': 'num', text: cov.toFixed(0) + '%' }))),
+      h('td', { 'class': 'c-age', title: fmtDate(s.maxM), text: fmtAge(s.maxM) }));
+    function open() { openFolder(s, null); go('space'); }
+    tr.addEventListener('click', open);
+    tr.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(); });
+    tbody.appendChild(tr);
+  });
+  var sharesPanel = h('div', { 'class': 'panel' },
+    h('div', { 'class': 'sum' }, h('h2', { 'class': 't', text: 'Shares, largest first' }), seg('Size', [['disk', 'On disk'], ['apparent', 'Apparent']], state.sizeMode, function (v) { state.sizeMode = v; render(); })),
+    h('div', { 'class': 'tw' }, h('table', { 'class': 'list' },
+      h('thead', null, h('tr', null, h('th', { text: 'Share' }), h('th', { 'class': 'c-bar', text: 'What is in it' }), h('th', { 'class': 'num c-size', text: 'Size' }),
+        withSnap ? h('th', { 'class': 'num c-snap', text: 'Snapshots' }) : null, h('th', { 'class': 'num c-items', text: 'Items' }), h('th', { 'class': 'c-cov', text: 'Described, by size' }), h('th', { 'class': 'c-age', text: 'Changed' }))),
+      tbody)));
+
+  var g0 = rv.q.groups[0], sc = state.scan, poor = 0;
+  nodes.forEach(function (n) { if (n.suggest) poor++; });
+  var cards = h('div', { 'class': 'stack' },
+    h('div', { 'class': 'panel pad card' }, h('h2', { 'class': 't', text: 'Review' }),
+      g0 ? h('p', null, 'You are in ', h('span', { 'class': 'big', text: g0.label }), ': ' + fmtInt(g0.remaining) + ' of ' + fmtInt(g0.total) + ' left. ' + fmtInt(rv.q.remaining) + ' left in the whole queue.')
+         : h('p', { text: 'The current queue is finished.' }),
+      h('button', { 'class': 'btn primary', type: 'button', onclick: function () { go('review'); } }, 'Continue review')),
+    h('div', { 'class': 'panel pad card' }, h('h2', { 'class': 't', text: 'Scans' }),
+      h('div', { 'class': 'rows' },
+        h('div', null, h('span', { text: 'Last scan' }), h('span', { text: sc.lastLabel + ', ' + sc.lastMode })),
+        h('div', null, h('span', { text: 'Took' }), h('span', { text: sc.lastTook })),
+        h('div', null, h('span', { text: 'Found' }), h('span', { text: fmtInt(TOTAL_ITEMS) + ' items, 0 errors' })),
+        h('div', null, h('span', { text: 'Hardlinked files' }), h('span', { text: '19,774, each counted once' })),
+        h('div', null, h('span', { text: 'Next scheduled' }), h('span', { text: 'tomorrow 03:00, low impact' }))),
+      h('button', { 'class': 'btn', type: 'button', onclick: openScanDialog }, 'Scan now')),
+    h('div', { 'class': 'panel pad card' }, h('h2', { 'class': 't' }, 'Worth a look ', h('span', { 'class': 'later', text: 'later release' })),
+      h('div', { 'class': 'rows' },
+        h('div', null, h('span', { text: 'Not touched in 5 years' }), h('span', { text: fmtSize(root.ab[4]) })),
+        h('div', null, h('span', { text: 'Poorly named' }), h('span', { text: poor + ' items' })),
+        h('div', null, h('span', { text: 'Downloads never imported' }), h('span', { text: '3 files, 36.8 GiB' })),
+        h('div', null, h('span', { text: 'Duplicates' }), h('span', { text: 'not checked yet' })),
+        h('div', null, h('span', { text: 'In quarantine' }), h('span', { text: '4 items, 38.6 GiB' })))));
+  wrap.appendChild(h('div', { 'class': 'split', style: { 'margin-top': '12px' } }, sharesPanel, cards));
+  return wrap;
+};
+
+/* ------------------------------------------- annotations, storage, the rest */
+
+SCREENS.annotations = function () {
+  var ro = state.app === 'readonly', wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(h('div', { 'class': 'sh' }, h('h1', { text: 'Annotations' }), h('span', { 'class': 'sub', text: 'What is described so far, share by share, and the prefix list.' })));
+  var counts = {}, used = {};
+  ann.forEach(function (a, id) {
+    var n = byId(id), c = counts[n.share.id] || (counts[n.share.id] = { d: 0, s: 0 });
+    if (a.skipped) c.s++; else if (hasContent(a)) c.d++;
+    a.prefixes.forEach(function (p) { used[p] = (used[p] || 0) + 1; });
+  });
+  var tb = h('tbody');
+  root.children.slice().sort(function (a, b) { return b.size - a.size; }).forEach(function (s) {
+    var c = counts[s.id] || { d: 0, s: 0 }, cov = s.size > 0 ? coveredBytes(s) / s.size * 100 : 0;
+    tb.appendChild(h('tr', { 'class': 'pseudo' },
+      h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, icon('dir'), h('span', { 'class': 'fs', text: s.name })), c.d ? h('div', { 'class': 'where fs', text: s.name + '/.reflection/INDEX.md' }) : null),
+      h('td', { 'class': 'num c-items', text: fmtInt(c.d) }), h('td', { 'class': 'num c-items', text: fmtInt(c.s) }),
+      h('td', { 'class': 'num c-items', text: s.name === 'downloads' ? '2' : '0' }),
+      h('td', { 'class': 'c-cov' }, h('div', { 'class': 'nm' }, h('div', { 'class': 'meter', style: { flex: '1' } }, h('i', { style: { width: cov.toFixed(1) + '%' } })), h('span', { 'class': 'num', text: cov.toFixed(0) + '%' }))),
+      h('td', { 'class': 'c-age' }, h('button', { 'class': 'btn small', type: 'button', onclick: function () { rv.spec = defaultSpec(); rv.spec.shares = [s.id]; rvStart(); go('review'); } }, 'Review'))));
+  });
+  wrap.appendChild(h('div', { 'class': 'panel' }, h('div', { 'class': 'tw' }, h('table', { 'class': 'list' },
+    h('thead', null, h('tr', null, h('th', { text: 'Share' }), h('th', { 'class': 'num c-items', text: 'Described' }), h('th', { 'class': 'num c-items', text: 'Skipped' }),
+      h('th', { 'class': 'num c-items', text: 'Missing' }), h('th', { 'class': 'c-cov', text: 'Covered, by size' }), h('th', { 'class': 'c-age' }))), tb))));
+
+  var pb = h('tbody');
+  prefixes.forEach(function (p, i) {
+    pb.appendChild(h('tr', { 'class': 'pseudo' }, h('td', { 'class': 'c-type' }, h('span', { 'class': 'tag', text: p.name })), h('td', { text: p.meaning }),
+      h('td', { 'class': 'num c-items', text: fmtInt(used[p.name] || 0) }),
+      h('td', { 'class': 'c-age' }, h('button', { 'class': 'btn small', type: 'button', disabled: ro, onclick: function () { prefixes.splice(i, 1); render(); toast('Removed from the list. Items that carry ' + p.name + ' keep it.'); } }, 'Remove'))));
+  });
+  var pn = h('input', { id: 'px-name', type: 'text', placeholder: 'PREFIX', autocomplete: 'off', disabled: ro }), pm = h('input', { id: 'px-meaning', type: 'text', placeholder: 'What it means', autocomplete: 'off', disabled: ro });
+  var perr = h('div', { 'class': 'err', role: 'alert', hidden: true });
+  function addPrefix() {
+    var name = pn.value.trim(), msg = '';
+    if (!name || name.length > 32) msg = 'A prefix is 1 to 32 characters.';
+    else if (/[\s|]/.test(name)) msg = 'A prefix cannot contain spaces or the | character.';
+    else if (prefixes.some(function (p) { return p.name === name; })) msg = 'That prefix is already in the list.';
+    if (msg) { perr.textContent = msg; perr.hidden = false; pn.focus(); return; }
+    prefixes.push({ name: name, meaning: pm.value.trim() });
+    render();
+  }
+  [pn, pm].forEach(function (el) { el.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addPrefix(); } }); });
+  wrap.appendChild(h('div', { 'class': 'panel', style: { 'margin-top': '12px' } },
+    h('div', { 'class': 'sum' }, h('h2', { 'class': 't', text: 'Prefixes' }), h('span', { 'class': 'hint', text: 'Prefixes are tags. They never change a file’s name.' })),
+    h('div', { 'class': 'tw' }, h('table', { 'class': 'list' }, h('thead', null, h('tr', null, h('th', { 'class': 'c-type', text: 'Prefix' }), h('th', { text: 'Meaning' }), h('th', { 'class': 'num c-items', text: 'Items' }), h('th', { 'class': 'c-age' }))), pb)),
+    h('div', { 'class': 'pad filters' }, h('label', { 'for': 'px-name' }, 'New prefix', pn), h('label', { 'class': 'grow', 'for': 'px-meaning' }, 'Meaning', pm),
+      h('button', { 'class': 'btn', type: 'button', disabled: ro, onclick: addPrefix }, 'Add'), perr)));
+
+  wrap.appendChild(h('div', { 'class': 'panel pad', style: { 'margin-top': '12px' } }, h('h2', { 'class': 't', text: 'Annotations whose item went missing' }),
+    h('p', { 'class': 'hint', text: 'These were not found at the last scan. An annotation follows its item through renames and moves; these two could not be matched.' }),
+    h('div', { 'class': 'rows', style: { 'margin-top': '8px' } },
+      h('div', null, h('span', { 'class': 'fs', text: 'downloads/camera-import-2023/' }), h('span', { text: '“Holiday photos, not yet sorted into photos/”' })),
+      h('div', null, h('span', { 'class': 'fs', text: 'downloads/router-config-backup.bin' }), h('span', { text: '“Keep until the new router is set up”' }))),
+    h('div', { 'class': 'actions', style: { 'margin-top': '8px' } }, h('button', { 'class': 'btn small', type: 'button', disabled: true }, 'Attach to another item'), h('button', { 'class': 'btn small', type: 'button', disabled: true }, 'Delete annotation'))));
+  return wrap;
+};
+
+SCREENS.storage = function () {
+  var wrap = h('div', { 'class': 'screen' }), some = state.snap === 'some';
+  wrap.appendChild(guide('A pool with no snapshots is the default here. Switch this control to see how snapshot space appears on this screen, on Overview and at the top of a share in Space.'));
+  wrap.appendChild(h('div', { 'class': 'sh' }, h('h1', { text: 'Storage' }), h('span', { 'class': 'sub', text: 'Datasets as ZFS accounts for them.' })));
+  wrap.appendChild(h('div', { 'class': 'ctls' }, seg('Snapshot data in the mockup', [['none', 'No snapshots'], ['some', 'Some snapshots'], ['unknown', 'ZFS not readable']], state.snap, function (v) { state.snap = v; render(); })));
+  if (state.snap === 'unknown') {
+    wrap.appendChild(h('div', { 'class': 'banner warn' }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'No ZFS figures'),
+      h('div', null, 'Snapshot and compression figures are not available: ', h('span', { 'class': 'fs', text: '/dev/zfs' }), ' is not passed to the container and no list file was found. Everything else works. Either pass the device, or schedule the host script from the README.')));
+  } else {
+    wrap.appendChild(h('p', { 'class': 'hint', style: { 'margin-bottom': '10px' }, text: 'Figures read from /dev/zfs, 4 minutes ago. ' + (some ? '' : 'There are no snapshots on this pool, so no snapshot columns are shown elsewhere.') }));
+  }
+  var tb = h('tbody'), max = 0;
+  root.children.forEach(function (s) { max = Math.max(max, s.disk + snapOf(s).bytes); });
+  root.children.slice().sort(function (a, b) { return b.disk - a.disk; }).forEach(function (s) {
+    var sn = snapOf(s);
+    tb.appendChild(h('tr', { 'class': 'pseudo' },
+      h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, h('span', { 'class': 'fs', text: 'tank/' + s.name }))),
+      h('td', { 'class': 'c-bar' }, compBar(s, max, 'plain', sn.bytes)),
+      h('td', { 'class': 'num c-size', text: fmtSize(s.disk + sn.bytes) }),
+      h('td', { 'class': 'num c-size', text: fmtSize(s.disk) }),
+      h('td', { 'class': 'num c-snap', text: state.snap === 'unknown' ? 'unknown' : sn.bytes ? fmtSize(sn.bytes) + ' in ' + sn.count : 'none' }),
+      h('td', { 'class': 'num c-items', text: state.snap === 'unknown' ? 'unknown' : (s.size / Math.max(1, s.disk)).toFixed(2) + '×' }),
+      h('td', { 'class': 'c-age', text: 'off' })));
+  });
+  wrap.appendChild(h('div', { 'class': 'panel' }, h('div', { 'class': 'tw' }, h('table', { 'class': 'list' },
+    h('thead', null, h('tr', null, h('th', { text: 'Dataset' }), h('th', { 'class': 'c-bar' }), h('th', { 'class': 'num c-size', text: 'Used' }), h('th', { 'class': 'num c-size', text: 'By files' }),
+      h('th', { 'class': 'num c-snap', text: 'By snapshots' }), h('th', { 'class': 'num c-items', text: 'Compression' }), h('th', { 'class': 'c-age', text: 'Read times' }))), tb)),
+    h('div', { 'class': 'pad hint', text: 'Read times are off on every dataset, so an item’s age comes from when it was last changed and when it arrived.' })));
+  return wrap;
+};
+
+SCREENS.quarantine = function () {
+  var wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(guide('Quarantine is a later release (build step 4). This static screen shows where it will live and what it will say.'));
+  wrap.appendChild(h('div', { 'class': 'sh' }, h('h1', { text: 'Quarantine' }), h('span', { 'class': 'sub', text: '4 items, 38.6 GiB. Kept for 30 days, then purged.' })));
+  var tb = h('tbody');
+  [['Untitled.mov', 'downloads/', 12.4 * GiB, '2026-09-21', 17], ['backup.tar.gz', 'downloads/', 21.0 * GiB, '2026-09-28', 24],
+   ['Kite.Season.2012.720p.x264-OLD.avi', 'media/torrents/complete/', 4.4 * GiB, '2026-10-01', 27], ['setup(1).exe', 'downloads/', 412 * MiB, '2026-10-03', 29]].forEach(function (r) {
+    tb.appendChild(h('tr', { 'class': 'pseudo' },
+      h('td', { 'class': 'c-name' }, h('div', { 'class': 'nm' }, icon('file'), h('span', { 'class': 'fs', text: r[0] })), h('div', { 'class': 'where fs', text: 'from tank/' + r[1] })),
+      h('td', { 'class': 'num c-size', text: fmtSize(r[2]) }), h('td', { 'class': 'c-age', text: r[3] }),
+      h('td', { 'class': 'c-cov' }, h('div', { 'class': 'nm' }, h('div', { 'class': 'meter', style: { flex: '1' } }, h('i', { style: { width: ((30 - r[4]) / 30 * 100).toFixed(0) + '%' } })), h('span', { 'class': 'num', text: 'in ' + r[4] + ' days' }))),
+      h('td', { 'class': 'c-age' }, h('button', { 'class': 'btn small', type: 'button', disabled: true }, 'Restore'))));
+  });
+  wrap.appendChild(h('div', { 'class': 'panel' }, h('div', { 'class': 'tw' }, h('table', { 'class': 'list' },
+    h('thead', null, h('tr', null, h('th', { text: 'Item' }), h('th', { 'class': 'num c-size', text: 'Size' }), h('th', { 'class': 'c-age', text: 'Quarantined' }), h('th', { 'class': 'c-cov', text: 'Purged' }), h('th', { 'class': 'c-age' }))), tb))));
+  wrap.appendChild(h('div', { 'class': 'banner warn', style: { 'margin-top': '12px' } }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'Example warnings'),
+    h('div', null, 'Shown when you quarantine: “This frees nothing while 1 other link to the file exists.” and “This dataset has 42 snapshots. The space is freed only as the snapshots that hold this file expire.”')));
+  wrap.appendChild(h('div', { 'class': 'panel pad' }, h('h2', { 'class': 't', text: 'Undo log' }),
+    h('div', { 'class': 'rows' },
+      h('div', null, h('span', { text: '2026-10-03 21:14  Quarantined setup(1).exe' }), h('span', { text: 'Undo' })),
+      h('div', null, h('span', { text: '2026-10-02 09:02  Renamed scan0041.pdf to Garage lease 2026 (signed).pdf' }), h('span', { text: 'Undo' })),
+      h('div', null, h('span', { text: '2026-10-01 18:40  Quarantined Kite.Season.2012.720p.x264-OLD.avi' }), h('span', { text: 'Undo' })),
+      h('div', null, h('span', { text: '2026-09-20 03:00  Purged 2 items, 6.1 GiB' }), h('span', { 'class': 'muted', text: 'cannot be undone' })))));
+  return wrap;
+};
+
+SCREENS.states = function () {
+  var wrap = h('div', { 'class': 'screen' });
+  wrap.appendChild(guide('These are still pictures of screens you cannot reach by clicking around. Scan progress, a stale index and read-only mode are live: use “Scan now” and “Try a state” at the top.'));
+  wrap.appendChild(h('div', { 'class': 'sh' }, h('h1', { text: 'First run and other states' })));
+  function inp(id, label, type, value) { return h('div', { 'class': 'field' }, h('label', { 'for': id, text: label }), h('input', { id: id, type: type, value: value || '', autocomplete: 'off' })); }
+  wrap.appendChild(h('div', { 'class': 'gallery' },
+    h('div', { 'class': 'panel' }, h('h3', { text: '1. First start: create the admin' }),
+      h('p', { 'class': 'hint', text: 'The setup code is printed in the container’s log at start-up. In Unraid: Docker, the container’s icon, Logs.' }),
+      inp('st-code', 'Setup code', 'text', ''), inp('st-user', 'Username', 'text', 'admin'), inp('st-pw', 'Password', 'password', ''), inp('st-pw2', 'Password again', 'password', ''),
+      h('div', null, h('button', { 'class': 'btn primary', type: 'button' }, 'Create the account')),
+      h('p', { 'class': 'hint', text: 'Your browser warned about a self-signed certificate before this page. The log also shows its SHA-256 fingerprint, so you can check it is this server’s.' })),
+    h('div', { 'class': 'panel' }, h('h3', { text: '2. Sign in' }), inp('st-user2', 'Username', 'text', 'admin'), inp('st-pw3', 'Password', 'password', ''),
+      h('div', null, h('button', { 'class': 'btn primary', type: 'button' }, 'Sign in')),
+      h('div', { 'class': 'banner warn' }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'Locked'), h('div', null, 'Too many attempts. Try again in 28 s.')),
+      h('p', { 'class': 'hint', text: 'Forgotten password: run reset-admin in the container and a new setup code appears in the log.' })),
+    h('div', { 'class': 'panel' }, h('h3', { text: '3. Nothing scanned yet' }), h('p', { text: 'Nothing has been scanned yet, so there is nothing to show.' }),
+      h('div', { 'class': 'code', text: 'Will scan: /mnt/tank (13 shares found)' }),
+      h('div', null, h('button', { 'class': 'btn primary', type: 'button', onclick: openScanDialog }, 'Start the first scan')),
+      h('p', { 'class': 'hint', text: 'Every screen shows this panel until the first scan has finished.' })),
+    h('div', { 'class': 'panel' }, h('h3', { text: '4. The first scan, running' }), h('p', { text: 'Balanced scan, 41%. 459,400 of 1,120,400 items, about 9 min left.' }),
+      h('div', { 'class': 'prog' }, h('i', { style: { width: '41%' } })),
+      h('p', { 'class': 'hint', text: 'The percentage is real: the total comes from ZFS’s own object count. Where a filesystem gives no count, the bar is replaced by the number of items so far.' })),
+    h('div', { 'class': 'panel' }, h('h3', { text: '5. Signed out in the middle of a review' }), h('p', { text: 'Your session ended. Sign in to carry on.' }), inp('st-pw4', 'Password', 'password', ''),
+      h('div', null, h('button', { 'class': 'btn primary', type: 'button' }, 'Sign in')),
+      h('p', { 'class': 'hint', text: 'This opens over the review screen. The note you were typing and any saves still waiting are kept and sent once you are back in.' })),
+    h('div', { 'class': 'panel' }, h('h3', { text: '6. A list that could not load' }),
+      h('div', { 'class': 'banner crit' }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'Could not load'), h('div', null, 'The server did not answer. The rows below are from a minute ago.'), h('button', { 'class': 'btn small', type: 'button' }, 'Retry')),
+      h('p', { 'class': 'hint', text: 'Lists keep their last contents, dimmed. No blank screens and no placeholder skeletons.' })),
+    h('div', { 'class': 'panel' }, h('h3', { text: '7. A scan finished while you were reviewing' }),
+      h('div', { 'class': 'banner good' }, h('span', { 'class': 'st' }, h('i', { text: '✓' }), 'New index'), h('div', null, 'A scan finished. The queue was reloaded and you are still on the same item. What you typed is kept.')),
+      h('p', { 'class': 'hint', text: 'Entry IDs change with every scan, so the screen finds its place again by path. This needs a small backend change (API gap 1).' }))));
+  return wrap;
+};
+
+/* ------------------------------------------------------------------- shell */
+
+var NAV = [['overview', 'Overview'], ['space', 'Space'], ['find', 'Find'], ['review', 'Review'], ['annotations', 'Annotations'], ['storage', 'Storage'],
+  ['quarantine', 'Quarantine', 'later'], ['states', 'First run', 'mockup']];
+function drawNav() {
+  var rail = document.getElementById('rail');
+  rail.replaceChildren();
+  NAV.forEach(function (it) {
+    rail.appendChild(h('button', { type: 'button', 'aria-current': state.screen === it[0] ? 'page' : null, onclick: function () { go(it[0]); } },
+      it[1], it[2] ? h('small', { text: it[2] }) : null));
+  });
+}
+function go(screen) {
+  state.screen = screen;
+  try { history.replaceState(null, '', '#' + screen); } catch (e) {}
+  render();
+  try { window.scrollTo(0, 0); } catch (e2) {}
+}
+function fmtLeft(secs) { return secs >= 90 ? Math.round(secs / 60) + ' min' : Math.max(1, Math.round(secs)) + ' s'; }
+function drawBanner() {
+  var b = document.getElementById('banner'), chip = document.getElementById('idx-chip'), txt = document.getElementById('idx-text'), sc = state.scan;
+  b.replaceChildren();
+  chip.className = 'idx';
+  txt.textContent = 'Index: ' + sc.lastLabel;
+  if (state.app === 'stale' && !sc.running) {
+    chip.className = 'idx stale'; txt.textContent = 'Index: 3 days old';
+    b.appendChild(h('div', { 'class': 'banner warn' }, h('span', { 'class': 'st' }, h('i', { text: '!' }), 'Stale index'),
+      h('div', null, 'What you see is 3 days old. The last two scheduled scans failed: ', h('span', { 'class': 'fs', text: '/mnt/tank/backups: input/output error' }), '.'),
+      h('button', { 'class': 'btn small', type: 'button', onclick: openScanDialog }, 'Scan now')));
+  }
+  if (sc.running) {
+    var m = MODE[sc.mode];
+    chip.className = 'idx run'; txt.textContent = 'Scanning ' + Math.floor(sc.pct) + '%, ' + m.name.toLowerCase();
+    b.appendChild(h('div', { 'class': 'banner info' }, h('span', { 'class': 'st' }, h('i', { text: 'i' }), 'Scan running'),
+      h('div', null, m.name + ' scan, ' + Math.floor(sc.pct) + '%. ' + fmtInt(TOTAL_ITEMS * sc.pct / 100) + ' of ' + fmtInt(TOTAL_ITEMS) + ' items, about ' + fmtInt(m.rate) +
+        ' a second, ' + fmtLeft(m.secs * (1 - sc.pct / 100)) + ' left. You are browsing the index from ' + sc.lastLabel + '.',
+        h('div', { 'class': 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.floor(sc.pct)) }, h('i', { style: { width: sc.pct.toFixed(1) + '%' } }))),
+      sc.mode !== 'aggressive' ? h('button', { 'class': 'btn small', type: 'button', onclick: function () { sc.mode = 'aggressive'; drawBanner(); } }, 'Finish faster') : null,
+      h('button', { 'class': 'btn small', type: 'button', onclick: stopScan }, 'Stop scan')));
+  }
+  if (state.app === 'readonly') {
+    b.appendChild(h('div', { 'class': 'banner info' }, h('span', { 'class': 'st' }, h('i', { text: 'i' }), 'Read-only mode'),
+      h('div', null, 'Browsing works. Annotations, prefixes and quarantine are switched off (', h('span', { 'class': 'fs', text: 'RP_READ_ONLY=1' }), ').')));
+  }
+}
+
+/* Scans. The mockup runs them in seconds; the text shows what the real durations would be. */
+var scanTimer = 0;
+function closeScanDialog() { if (scanDlg.close) scanDlg.close(); else scanDlg.removeAttribute('open'); }
+function openScanDialog() {
+  if (scanDlg.open) return;
+  if (state.scan.running) { toast('A scan is already running.'); return; }
+  var pick = document.getElementById('scan-' + state.scan.last);
+  if (pick) pick.checked = true;
+  document.getElementById('scan-last').textContent = 'Last scan: ' + state.scan.lastLabel + ', ' + state.scan.lastMode + ', took ' + state.scan.lastTook +
+    '. Your choice is remembered for next time. Scheduled scans do not ask: they use the mode set in Settings (low impact).';
+  if (scanDlg.showModal) scanDlg.showModal(); else scanDlg.setAttribute('open', '');
+  if (pick) pick.focus();
+}
+function startScan(mode) {
+  var sc = state.scan;
+  sc.running = true; sc.pct = 0; sc.mode = mode; sc.last = mode;
+  clearInterval(scanTimer);
+  scanTimer = setInterval(function () {
+    sc.pct += 100 / (MODE[sc.mode].demo * 4);
+    if (sc.pct >= 100) {
+      clearInterval(scanTimer);
+      sc.running = false; sc.pct = 0; sc.lastLabel = 'a moment ago'; sc.lastMode = MODE[sc.mode].name.toLowerCase(); sc.lastTook = MODE[sc.mode].took;
+      if (state.app === 'stale') { state.app = 'normal'; document.getElementById('app-state').value = 'normal'; }
+      toast('Scan finished. Showing the new index.');
+      if (state.screen === 'overview') render(); else drawBanner();
+      return;
+    }
+    drawBanner();
+  }, 250);
+  drawBanner();
+  toast('Scan started. In the mockup it runs in seconds.');
+}
+function stopScan() {
+  clearInterval(scanTimer);
+  state.scan.running = false; state.scan.pct = 0;
+  drawBanner();
+  toast('Scan stopped. The index from ' + state.scan.lastLabel + ' is still in use.');
+}
+document.getElementById('scan-btn').addEventListener('click', openScanDialog);
+document.getElementById('scan-cancel').addEventListener('click', closeScanDialog);
+document.getElementById('scan-form').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var v = 'balanced';
+  ['low', 'balanced', 'aggressive'].forEach(function (m) { if (document.getElementById('scan-' + m).checked) v = m; });
+  closeScanDialog();
+  startScan(v);
+});
+document.getElementById('app-state').addEventListener('change', function (e) { state.app = e.target.value; rerender(); });
+
+var afterRender = { review: rvAfterRender, space: spaceAfterRender, find: fillFind };
+function render() {
+  hideTip();
+  drawNav(); drawBanner();
+  var fn = SCREENS[state.screen];
+  view.replaceChildren(fn ? fn() : h('div', { 'class': 'panel pad muted', text: 'This screen is not in this save of the mockup yet.' }));
+  if (afterRender[state.screen]) afterRender[state.screen]();
+}
+
+var start = (location.hash || '').replace('#', '');
+if (SCREENS[start]) state.screen = start;
+if (!SCREENS[state.screen]) state.screen = 'review';
+rvStart();
+render();
+})();
+</script>
