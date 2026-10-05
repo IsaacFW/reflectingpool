@@ -2505,6 +2505,21 @@ function go(screen) {
   try { window.scrollTo(0, 0); } catch (e2) {}
 }
 function fmtLeft(secs) { return secs >= 90 ? Math.round(secs / 60) + ' min' : Math.max(1, Math.round(secs)) + ' s'; }
+/* The scan strip is built once and then updated in place, so its buttons stay clickable while the numbers move. */
+var scanUi = null;
+function scanLine() {
+  var sc = state.scan, m = MODE[sc.mode];
+  return m.name + ' scan, ' + Math.floor(sc.pct) + '%. ' + fmtInt(TOTAL_ITEMS * sc.pct / 100) + ' of ' + fmtInt(TOTAL_ITEMS) + ' items, about ' + fmtInt(m.rate) +
+    ' a second, ' + fmtLeft(m.secs * (1 - sc.pct / 100)) + ' left. You are browsing the index from ' + sc.lastLabel + '.';
+}
+function tickScan() {
+  var sc = state.scan;
+  if (!scanUi || !scanUi.line.isConnected) { drawBanner(); return; }
+  document.getElementById('idx-text').textContent = 'Scanning ' + Math.floor(sc.pct) + '%, ' + MODE[sc.mode].name.toLowerCase();
+  scanUi.line.textContent = scanLine();
+  scanUi.fill.style.setProperty('width', sc.pct.toFixed(1) + '%');
+  scanUi.prog.setAttribute('aria-valuenow', String(Math.floor(sc.pct)));
+}
 function drawBanner() {
   var b = document.getElementById('banner'), chip = document.getElementById('idx-chip'), txt = document.getElementById('idx-text'), sc = state.scan;
   b.replaceChildren();
@@ -2516,13 +2531,15 @@ function drawBanner() {
       h('div', null, 'What you see is 3 days old. The last two scheduled scans failed: ', h('span', { 'class': 'fs', text: '/mnt/tank/backups: input/output error' }), '.'),
       h('button', { 'class': 'btn small', type: 'button', onclick: openScanDialog }, 'Scan now')));
   }
+  scanUi = null;
   if (sc.running) {
     var m = MODE[sc.mode];
     chip.className = 'idx run'; txt.textContent = 'Scanning ' + Math.floor(sc.pct) + '%, ' + m.name.toLowerCase();
+    var line = h('span', { text: scanLine() }), fillEl = h('i', { style: { width: sc.pct.toFixed(1) + '%' } });
+    var prog = h('div', { 'class': 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.floor(sc.pct)) }, fillEl);
+    scanUi = { line: line, fill: fillEl, prog: prog };
     b.appendChild(h('div', { 'class': 'banner info' }, h('span', { 'class': 'st' }, h('i', { text: 'i' }), 'Scan running'),
-      h('div', null, m.name + ' scan, ' + Math.floor(sc.pct) + '%. ' + fmtInt(TOTAL_ITEMS * sc.pct / 100) + ' of ' + fmtInt(TOTAL_ITEMS) + ' items, about ' + fmtInt(m.rate) +
-        ' a second, ' + fmtLeft(m.secs * (1 - sc.pct / 100)) + ' left. You are browsing the index from ' + sc.lastLabel + '.',
-        h('div', { 'class': 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.floor(sc.pct)) }, h('i', { style: { width: sc.pct.toFixed(1) + '%' } }))),
+      h('div', null, line, prog),
       sc.mode !== 'aggressive' ? h('button', { 'class': 'btn small', type: 'button', onclick: function () { sc.mode = 'aggressive'; drawBanner(); } }, 'Finish faster') : null,
       h('button', { 'class': 'btn small', type: 'button', onclick: stopScan }, 'Stop scan')));
   }
@@ -2559,7 +2576,7 @@ function startScan(mode) {
       if (state.screen === 'overview') render(); else drawBanner();
       return;
     }
-    drawBanner();
+    tickScan();
   }, 250);
   drawBanner();
   toast('Scan started. In the mockup it runs in seconds.');
