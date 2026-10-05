@@ -206,9 +206,10 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
 
 /**
  * Everything about one item.
- * @param {{id: number, rev: number, onOpen: (e: Entry) => void, onChanged: () => void}} props
+ * @param {{id: number, rev: number, onOpen: (e: Entry) => void, onChanged: () => void, onShow?: (e: Entry) => void}} props
+ * onShow, where given, adds "Show in Space": the way from a search result to where the item lives.
  */
-export function Inspector({ id, rev, onOpen, onChanged }) {
+export function Inspector({ id, rev, onOpen, onChanged, onShow }) {
   const [data, setData] = useState(/** @type {{entry: Entry, annotation: Annotation | null, links: Entry[]} | null} */ (null));
   const [error, setError] = useState('');
   const mode = prefs.value.size;
@@ -251,7 +252,10 @@ export function Inspector({ id, rev, onOpen, onChanged }) {
           ${others.map((l) => html`<div class="fs" key=${l.id}>${l.path}</div>`)}
           Removing one of these names frees nothing while the others exist.
         </div>`}
-      ${isDir && html`<div class="actions"><button class="btn small" type="button" onClick=${() => onOpen(e)}>Open this folder</button></div>`}
+      <div class="actions">
+        ${isDir && html`<button class="btn small" type="button" onClick=${() => onOpen(e)}>Open this folder</button>`}
+        ${onShow && html`<button class="btn small" type="button" onClick=${() => onShow(e)}>Show in Space</button>`}
+      </div>
       <${Preview} entry=${e} />
       <${AnnotationForm} key=${`${e.id}:${annotation ? annotation.updated || "skipped" : ""}`} entry=${e} annotation=${annotation} onSaved=${onChanged} />
     </aside>`;

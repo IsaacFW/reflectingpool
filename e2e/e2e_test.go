@@ -750,3 +750,63 @@ func TestAnnotations(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+func TestFind(t *testing.T) {
+	p := open(t)
+	p.signIn("find 01 signed in", "/find", `.vl-row`)
+
+	// A view is a preset of filters; the summary counts everything that
+	// matches, not just the rows on screen.
+	p.do("find 02 largest folders",
+		chromedp.Click(has("button", "Largest folders")),
+		until(`location.search.includes('kind=dir') && document.querySelector('.vl-row .fs')?.textContent.endsWith('/')`),
+	)
+	p.do("find 03 a search by name",
+		chromedp.Navigate(base+"/find"), chromedp.WaitVisible(`input[type=search]`),
+		chromedp.SendKeys(`input[type=search]`, "file-29"),
+		chromedp.WaitVisible(`//span[@role="status"][starts-with(., "100 items")]`),
+		until(`[...document.querySelectorAll('.vl-row .nm .fs')].every((e) => e.textContent.startsWith('file-29'))`),
+	)
+
+	// From a result to where it lives, and from a set of results to a review.
+	p.do("find 04 show in space",
+		chromedp.Navigate(base+"/find?kind=file&shares=docs&q=notes"),
+		chromedp.WaitVisible(row("notes.txt")),
+		chromedp.Click(row("notes.txt")),
+		chromedp.Click(has("button", "Show in Space")),
+		chromedp.WaitVisible(row("notes.txt")+`[contains(@class,"sel")]`),
+		until(`location.pathname === '/space' && location.search.includes('docs')`),
+	)
+	p.do("find 05 review these results",
+		chromedp.Navigate(base+"/find?kind=file&shares=docs&q=notes"),
+		chromedp.WaitVisible(row("notes.txt")),
+		chromedp.Click(has("button", "Review these results")),
+		heading("notes.txt"),
+		until(`location.pathname === '/review' && location.search.includes('q=notes')`),
+	)
+
+	// A view of one's own is kept in the browser.
+	p.do("find 06 a saved view",
+		chromedp.Navigate(base+"/find?kind=file&types=text"),
+		chromedp.WaitVisible(row("notes.txt")),
+		chromedp.Click(has("button", "Save this view")),
+		chromedp.SendKeys(`input[aria-label="Name for this view"]`, "Text files"),
+		chromedp.Click(has("button", "Save")),
+		chromedp.Reload(),
+		chromedp.WaitVisible(`//span[contains(@class,"scope")]/button[.="Text files"]`),
+	)
+
+	// Space hands its folder over.
+	p.do("find 07 inside a folder, from space",
+		chromedp.Navigate(base+"/space?path="+root+"/docs"),
+		chromedp.Click(has("button", "Find inside this folder")),
+		chromedp.WaitVisible(`//span[contains(@class,"scope")][contains(., "/docs")]`),
+		chromedp.WaitVisible(`.vl-row`),
+	)
+	if got := p.text(`span[role=status]`); !strings.Contains(got, "3,004 items") && !strings.Contains(got, "3,005 items") && !strings.Contains(got, "3,006 items") {
+		t.Errorf("everything inside docs = %q", got)
+	}
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}

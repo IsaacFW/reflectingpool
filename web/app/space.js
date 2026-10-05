@@ -181,6 +181,10 @@ export function Space() {
               <button type="button" aria-pressed=${mode === 'apparent' ? 'true' : 'false'} onClick=${() => setPref('size', 'apparent')}>Apparent</button>
             </div>
           </div>
+          ${folder && html`<div class="ctl">
+            <button class="btn small" type="button" onClick=${() => go("find", { under: folder.path })}>Find inside this folder</button>
+            <button class="btn small" type="button" onClick=${() => go("review", { under: folder.path })}>Review what is inside</button>
+          </div>`}
           <div class="legend" aria-label="What the bar colours mean">
             <span class="legend-i"><i class="sw k-video"></i>Video</span>
             <span class="legend-i"><i class="sw k-backup"></i>Archives and disk images</span>

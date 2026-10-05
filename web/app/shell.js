@@ -3,6 +3,7 @@
 import { Annotations } from './annotations.js';
 import { api, ApiError, session } from './api.js';
 import { Brand, Setup, SignIn } from './auth.js';
+import { Find } from './find.js';
 import { count, moment } from './format.js';
 import { html, useEffect, useState } from './lib.js';
 import { Review } from './review.js';
@@ -13,7 +14,6 @@ import { applyTheme, go, href, route, SCREENS, toast } from './state.js';
 
 const COMING = {
   overview: 'Capacity, the shares with their size and how much of each is described, and where the last review stopped.',
-  find: 'Search and filters across everything: by size, age, type, name and what is recorded.',
 
   storage: 'Datasets, compression and the space held by snapshots.',
   quarantine: 'Items set aside before deletion, and how to bring them back.',
@@ -66,6 +66,7 @@ function Screen() {
   if (!status.index) return html`<${FirstRun} />`;
   if (screen === 'space') return html`<${Space} />`;
   if (screen === 'review') return html`<${Review} />`;
+  if (screen === 'find') return html`<${Find} />`;
   if (screen === 'annotations') return html`<${Annotations} />`;
   const known = SCREENS.find((s) => s.id === screen);
   return html`
