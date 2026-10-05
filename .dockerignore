@@ -1,4 +1,6 @@
 .git
 .claude
+.cache
 dist
+design
 *.db

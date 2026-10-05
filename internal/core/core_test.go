@@ -12,6 +12,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/appdb"
 	"github.com/IsaacFW/reflectingpool/internal/index"
 	"github.com/IsaacFW/reflectingpool/internal/meta"
+	"github.com/IsaacFW/reflectingpool/internal/scan"
 	"github.com/IsaacFW/reflectingpool/internal/storage"
 )
 
@@ -52,7 +53,7 @@ func openEnv(t *testing.T, root, data string, readOnly bool) *env {
 
 func (e *env) scan() {
 	e.t.Helper()
-	if _, err := e.app.Scan(context.Background()); err != nil {
+	if _, err := e.app.Scan(context.Background(), scan.Aggressive); err != nil {
 		e.t.Fatal(err)
 	}
 	if st := e.app.ScanStatus(); len(st.Warnings) > 0 {
@@ -429,6 +430,33 @@ func TestOpenContentCannotEscapeTheRoot(t *testing.T) {
 	os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(e.root, "share/plain.txt"))
 	if _, _, err := e.app.OpenContent(ctx, id); err == nil {
 		t.Fatal("followed a symlink that replaced the file")
+	}
+}
+
+// A gentler scan must produce the same index as an aggressive one, and say
+// which intensity it ran at.
+func TestScanIntensityIsRecordedAndChangesNothingElse(t *testing.T) {
+	e := newEnv(t, false, map[string]string{"share/a.txt": "aaa", "share/sub/b.txt": "bb", "other/c.bin": "c"})
+	e.scan()
+	fast := *e.app.ScanStatus().Index
+	if fast.Intensity != "aggressive" {
+		t.Errorf("intensity recorded as %q", fast.Intensity)
+	}
+	for _, intensity := range []scan.Intensity{scan.Balanced, scan.LowImpact} {
+		info, err := e.app.Scan(context.Background(), intensity)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Intensity != intensity.String() {
+			t.Errorf("%v scan recorded as %q", intensity, info.Intensity)
+		}
+		if info.Files != fast.Files || info.Dirs != fast.Dirs || info.Size != fast.Size {
+			t.Errorf("%v scan found %d files, %d folders, %d bytes; aggressive found %d, %d, %d",
+				intensity, info.Files, info.Dirs, info.Size, fast.Files, fast.Dirs, fast.Size)
+		}
+	}
+	if st := e.app.ScanStatus(); st.Running || st.Intensity != "" {
+		t.Errorf("an idle status reports intensity %q", st.Intensity)
 	}
 }
 

@@ -72,6 +72,8 @@ type Info struct {
 	Disk       int64     `json:"disk"`
 	Hardlinked int64     `json:"hardlinked"`
 	Errors     int64     `json:"errors"`
+	// Intensity is the scan intensity the index was built at.
+	Intensity string `json:"intensity,omitempty"`
 }
 
 // Dataset is a mounted filesystem seen during a scan.

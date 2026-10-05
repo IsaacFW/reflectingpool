@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -32,7 +33,17 @@ func (c *countSink) Counted([]int64) error        { return nil }
 // cmdBench measures how fast this machine walks and indexes a tree. It reads
 // metadata only and writes nothing outside a temporary directory.
 func cmdBench(args []string) error {
-	roots := args
+	fs := flag.NewFlagSet("bench", flag.ContinueOnError)
+	intensityName := fs.String("intensity", "aggressive", "scan intensity to measure: aggressive, balanced or low")
+	limit := fs.Duration("for", 0, "walk for this long and report the rate, e.g. 5m; 0 runs the full benchmark")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	intensity, err := scan.ParseIntensity(*intensityName)
+	if err != nil {
+		return err
+	}
+	roots := fs.Args()
 	if len(roots) == 0 {
 		roots = envList("RP_ROOTS")
 	}
@@ -46,13 +57,16 @@ func cmdBench(args []string) error {
 	if v, err := strconv.Atoi(os.Getenv("RP_WORKERS")); err == nil && v > 0 {
 		workers = v
 	}
-	fmt.Printf("Reflecting Pool %s benchmark\nroots: %s\nwalkers: %d, cores: %d\n\n", version, strings.Join(roots, ", "), workers, runtime.NumCPU())
+	fmt.Printf("Reflecting Pool %s benchmark\nroots: %s\nintensity: %s, cores: %d\n\n", version, strings.Join(roots, ", "), intensity, runtime.NumCPU())
+	if *limit > 0 {
+		return benchTimed(ctx, roots, workers, intensity, *limit)
+	}
 
 	// Two walks with no index: the first shows the cache as it was found,
 	// the second shows the speed once the filesystem's metadata is in memory.
 	for _, label := range []string{"walk 1 (cache as found)", "walk 2 (cache warm)"} {
 		sink := &countSink{}
-		res, err := scan.Walk(ctx, scan.Options{Roots: roots, Workers: workers}, sink)
+		res, err := scan.Walk(ctx, scan.Options{Roots: roots, Workers: workers, Intensity: intensity}, sink)
 		if err != nil {
 			return err
 		}
@@ -81,7 +95,7 @@ func cmdBench(args []string) error {
 	defer app.Close()
 
 	start := time.Now()
-	info, err := app.Scan(ctx)
+	info, err := app.Scan(ctx, intensity)
 	if err != nil {
 		return err
 	}
@@ -178,6 +192,61 @@ func cmdBench(args []string) error {
 		}
 		return nil
 	})
+}
+
+// benchTimed walks at one intensity for a fixed time. It exists to answer the
+// question the full benchmark cannot: how much does a scan at this intensity
+// slow down whatever else is using the pool? Start a transfer, run this, and
+// watch the transfer's speed.
+func benchTimed(ctx context.Context, roots []string, workers int, intensity scan.Intensity, limit time.Duration) error {
+	expected := expectedEntries(roots)
+	fmt.Printf("walking for %s; compare the speed of other work on the pool now with its speed before\n", limit)
+	prog := &scan.Progress{}
+	timed, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	start := time.Now()
+	_, err := scan.Walk(timed, scan.Options{Roots: roots, Workers: workers, Intensity: intensity, Progress: prog}, &countSink{})
+	elapsed := time.Since(start)
+	if err != nil && timed.Err() == nil {
+		return err
+	}
+	entries := prog.Entries.Load()
+	rate := float64(entries) / elapsed.Seconds()
+	fmt.Printf("\nwalked %d entries in %s: %.0f entries/s (%d errors)\n", entries, elapsed.Round(time.Millisecond), rate, prog.Errors.Load())
+	fmt.Printf("walkers rested for %s in total to leave the disks to other work\n", time.Duration(prog.Rested.Load()).Round(time.Millisecond))
+	switch {
+	case err == nil:
+		fmt.Println("the whole tree was walked within the time, so this was a complete walk")
+	case expected > 0 && rate > 0:
+		fmt.Printf("the filesystems report about %d entries: a full walk at this rate would take about %s\n",
+			expected, (time.Duration(float64(expected)/rate) * time.Second).Round(time.Minute))
+		fmt.Println("(the rate was measured with the cache as it was found; a repeated walk can be faster)")
+	}
+	return nil
+}
+
+// expectedEntries is the filesystems' own count of files and folders under
+// the roots, or 0 when it cannot be known.
+func expectedEntries(roots []string) int64 {
+	mounts, err := storage.Mounts()
+	if err != nil {
+		return 0
+	}
+	table := storage.NewTable(mounts)
+	seen := make(map[uint64]bool)
+	var total int64
+	for _, root := range roots {
+		for _, m := range table.Under(root) {
+			if seen[m.Dev] {
+				continue
+			}
+			seen[m.Dev] = true
+			if u, err := storage.StatUsage(m.MountPoint); err == nil {
+				total += u.Objects
+			}
+		}
+	}
+	return total
 }
 
 func peakMemory() string {

@@ -70,6 +70,24 @@ The third must **fail** with "permission denied". It confirms that an unprivileg
 
 `bench` walks the tree twice, then runs a full scan into a throwaway index and times typical queries. The first walk shows a cold cache if the pool has been idle.
 
+### Scan intensity
+
+A scan can run at three intensities, which trade speed for how much they disturb other work on the same disks:
+
+| Intensity | What it does | When it is used |
+|---|---|---|
+| `aggressive` | 32 walkers at normal priority. Fastest; on a busy pool it takes about half the disks' attention | The first scan, and any scan started without choosing |
+| `balanced` | 4 walkers at reduced priority, resting half as long as each read took | When asked for |
+| `low` | 1 walker at the lowest priority, resting three times as long as each read took, so it backs off further when the disks are busy | Scheduled scans, by default |
+
+To see what an intensity costs other work on your pool, start something that uses the disks, note its speed, and run a timed walk beside it:
+
+```sh
+docker exec reflectingpool reflectingpool bench -intensity low -for 5m
+```
+
+It walks for five minutes, reports the rate, and estimates how long a full scan would take at that intensity.
+
 ## ZFS
 
 - **What is read.** Datasets under each root are found from the mount table and need nothing special. With `/dev/zfs` passed in, the program also runs `zfs list`, the only ZFS command it ever runs, to learn how much space snapshots hold.
@@ -98,7 +116,8 @@ All settings are environment variables.
 | `RP_READ_ONLY` | off | `1` disables everything that changes files, annotations included |
 | `RP_EXCLUDE` | | Extra directories to skip, comma-separated absolute paths |
 | `RP_SCAN_INTERVAL` | `24h` | Time between scheduled scans; `0` disables them |
-| `RP_WORKERS` | 4 per core, 8 to 32 | Parallel directory walkers |
+| `RP_SCAN_INTENSITY` | `low` | Intensity of scheduled scans: `aggressive`, `balanced` or `low` |
+| `RP_WORKERS` | 4 per core, 8 to 32 | Parallel directory walkers for an aggressive scan |
 | `RP_ZFS_LIST_FILE` | `<RP_DATA>/zfs-list.txt` | Output of the host script above |
 
 Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's image layers), each share's `.reflection` folder, and the data directory itself.
@@ -125,7 +144,7 @@ Everything but the first three routes needs the session cookie; anything but `GE
 | `GET /api/health` | Liveness, and whether setup is still needed |
 | `POST /api/setup` | Create the admin account with the setup code |
 | `POST /api/login`, `POST /api/logout`, `GET /api/session` | Sessions |
-| `GET /api/scan`, `POST /api/scan` | Scan status and progress; start a scan |
+| `GET /api/scan`, `POST /api/scan` | Scan status and progress; start a scan, optionally with `{"intensity": "aggressive" \| "balanced" \| "low"}` |
 | `GET /api/storage` | Datasets with usage and, where available, snapshot accounting |
 | `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown |
 | `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix |
@@ -146,7 +165,7 @@ Groups are served largest first and one at a time; an item leaves the queue when
 
 ## Development
 
-Requires Go 1.27 or Docker.
+Requires Go 1.27, or only Docker: `scripts/go.sh` runs the Go toolchain in a container, as in `scripts/go.sh go test ./...`.
 
 ```sh
 go test ./...                                      # unit and API tests

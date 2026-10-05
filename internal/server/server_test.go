@@ -315,6 +315,25 @@ func TestBrowseAnnotateAndReview(t *testing.T) {
 	}
 }
 
+func TestScanIntensityOverHTTP(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	h.signIn() // leaves an index built by an aggressive scan
+
+	h.expect(400, h.request("POST", "/api/scan", map[string]string{"intensity": "turbo"}, nil))
+	r := h.expect(202, h.request("POST", "/api/scan", map[string]string{"intensity": "low"}, nil))
+	if r.body["intensity"] != "low" {
+		t.Errorf("scan start = %s", r.raw)
+	}
+	for range 300 {
+		st := h.expect(200, h.request("GET", "/api/scan", nil, nil))
+		if index, _ := st.body["index"].(map[string]any); st.body["running"] == false && index["intensity"] == "low" {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the low-impact scan did not finish, or the index does not record its intensity")
+}
+
 func TestContentIsServedSafely(t *testing.T) {
 	h := newHarness(t, Options{}, false)
 	h.signIn()

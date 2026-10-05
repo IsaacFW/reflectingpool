@@ -10,6 +10,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/core"
 	"github.com/IsaacFW/reflectingpool/internal/index"
 	"github.com/IsaacFW/reflectingpool/internal/meta"
+	"github.com/IsaacFW/reflectingpool/internal/scan"
 )
 
 func (s *Server) health(w http.ResponseWriter, r *http.Request) {
@@ -82,12 +83,32 @@ func (s *Server) scanStatus(w http.ResponseWriter, r *http.Request, _ auth.Sessi
 	writeJSON(w, http.StatusOK, s.app.ScanStatus())
 }
 
+// scanStart begins a scan. The body is optional: {"intensity": "aggressive" |
+// "balanced" | "low"} chooses how hard the scan leans on the disks, and no
+// body means aggressive.
 func (s *Server) scanStart(w http.ResponseWriter, r *http.Request, _ auth.Session) {
-	if err := s.app.StartScan(); err != nil {
+	intensity := scan.Aggressive
+	if r.ContentLength != 0 {
+		var req struct {
+			Intensity string `json:"intensity"`
+		}
+		if err := decode(r, &req); err != nil {
+			s.fail(w, err)
+			return
+		}
+		if req.Intensity != "" {
+			var err error
+			if intensity, err = scan.ParseIntensity(req.Intensity); err != nil {
+				s.fail(w, badRequest(err.Error()))
+				return
+			}
+		}
+	}
+	if err := s.app.StartScan(intensity); err != nil {
 		s.fail(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "intensity": intensity.String()})
 }
 
 func (s *Server) storage(w http.ResponseWriter, r *http.Request, _ auth.Session) {

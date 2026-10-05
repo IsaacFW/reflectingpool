@@ -74,11 +74,17 @@ type Sink interface {
 // Progress is updated while a scan runs and may be read concurrently.
 type Progress struct {
 	Entries, Dirs, Bytes, Errors atomic.Int64
+	// Rested is the total time, in nanoseconds, walkers spent resting to
+	// leave the disks to other work.
+	Rested atomic.Int64
 }
 
 type Options struct {
-	Roots   []string
-	Workers int
+	Roots []string
+	// Workers is the number of parallel walkers for an aggressive scan.
+	// The gentler intensities choose their own.
+	Workers   int
+	Intensity Intensity
 	// Exclude lists absolute directory paths that are recorded but not entered.
 	// A directory is also excluded when it is the same directory as one of
 	// these reached by another path, as happens when a folder inside the
@@ -92,6 +98,11 @@ type Options struct {
 	// program's bookkeeping never shows up as data to review.
 	ShareMetaDirs []string
 	Progress      *Progress
+
+	// Test hooks: called on each walker's thread as it starts, and in place
+	// of sleeping.
+	onWalkerStart func()
+	sleep         func(time.Duration)
 }
 
 type Result struct {
@@ -148,6 +159,7 @@ type walker struct {
 	exclude   map[string]struct{}
 	excludeID map[linkKey]struct{} // the excluded directories by device and inode
 	prog      *Progress
+	prof      profile
 	nextID    atomic.Int64
 	out       chan []Entry
 
@@ -156,6 +168,7 @@ type walker struct {
 	stack   []work
 	pending int // directories queued or being read
 	stop    bool
+	quit    chan struct{} // closed when stop is set, to cut rests short
 
 	nodesMu sync.Mutex
 	nodes   []*node // every parent precedes its children
@@ -167,7 +180,10 @@ type walker struct {
 // Walk scans opts.Roots and streams what it finds to sink.
 func Walk(ctx context.Context, opts Options, sink Sink) (Result, error) {
 	start := time.Now()
-	if opts.Workers <= 0 {
+	prof := opts.Intensity.profile()
+	if prof.workers > 0 {
+		opts.Workers = prof.workers
+	} else if opts.Workers <= 0 {
 		opts.Workers = DefaultWorkers()
 	}
 	if opts.Progress == nil {
@@ -178,8 +194,10 @@ func Walk(ctx context.Context, opts Options, sink Sink) (Result, error) {
 		exclude:   make(map[string]struct{}, len(opts.Exclude)),
 		excludeID: make(map[linkKey]struct{}, len(opts.Exclude)),
 		prog:      opts.Progress,
+		prof:      prof,
 		out:       make(chan []Entry, 4*opts.Workers),
 		links:     make(map[linkKey]link),
+		quit:      make(chan struct{}),
 	}
 	w.cond = sync.NewCond(&w.mu)
 	for _, p := range opts.Exclude {
@@ -230,7 +248,14 @@ func Walk(ctx context.Context, opts Options, sink Sink) (Result, error) {
 	stopWatch := context.AfterFunc(ctx, w.abort)
 	var wg sync.WaitGroup
 	for range opts.Workers {
-		wg.Go(w.run)
+		wg.Go(func() {
+			prof.runWalker(func() {
+				if opts.onWalkerStart != nil {
+					opts.onWalkerStart()
+				}
+				w.run()
+			})
+		})
 	}
 	wg.Wait()
 	stopWatch()
@@ -337,9 +362,32 @@ func (w *walker) push(it work) {
 
 func (w *walker) abort() {
 	w.mu.Lock()
-	w.stop = true
+	if !w.stop {
+		w.stop = true
+		close(w.quit)
+	}
 	w.mu.Unlock()
 	w.cond.Broadcast()
+}
+
+// rest pauses a walker after a chunk of work, for as long as the scan's
+// intensity asks.
+func (w *walker) rest(worked time.Duration) {
+	d := w.prof.rest(worked)
+	if d <= 0 {
+		return
+	}
+	w.prog.Rested.Add(int64(d))
+	if w.opts.sleep != nil {
+		w.opts.sleep(d)
+		return
+	}
+	t := time.NewTimer(d)
+	select {
+	case <-t.C:
+	case <-w.quit:
+		t.Stop()
+	}
 }
 
 func (w *walker) run() {
@@ -369,6 +417,7 @@ func (w *walker) run() {
 
 func (w *walker) readDir(it work) {
 	n := it.n
+	began := time.Now()
 	fd, err := openDir(it.path)
 	if err != nil {
 		n.flags |= FlagError
@@ -420,6 +469,10 @@ func (w *walker) readDir(it work) {
 			w.out <- batch
 			batch = nil
 		}
+		// Rest after every chunk, not only after the directory, so that a
+		// folder with a million entries is not read in one unbroken run.
+		w.rest(time.Since(began))
+		began = time.Now()
 		if rerr != nil {
 			if rerr != io.EOF {
 				n.flags |= FlagError

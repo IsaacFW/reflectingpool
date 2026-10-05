@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -21,6 +22,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/appdb"
 	"github.com/IsaacFW/reflectingpool/internal/auth"
 	"github.com/IsaacFW/reflectingpool/internal/core"
+	"github.com/IsaacFW/reflectingpool/internal/scan"
 	"github.com/IsaacFW/reflectingpool/internal/server"
 )
 
@@ -32,7 +34,11 @@ Usage: reflectingpool <command>
 
   serve         run the web server (the container's default)
   scan          scan once, build the index and exit
+                  -intensity aggressive|balanced|low   (default aggressive)
   bench [dir]   measure scan and query speed; changes nothing on the pool
+                  -intensity aggressive|balanced|low   (default aggressive)
+                  -for 5m    walk for that long and report the rate, to see
+                             how much a scan slows other work on the pool
   doctor        report what this container can see and do
   reset-admin   delete the admin account so setup runs again
   version       print the version
@@ -49,7 +55,10 @@ Settings come from the environment:
   RP_READ_ONLY      1 to disable everything that changes files
   RP_EXCLUDE        extra directories to skip, comma-separated absolute paths
   RP_SCAN_INTERVAL  time between scheduled scans (default 24h, 0 to disable)
-  RP_WORKERS        parallel directory walkers (default: 4 per core, 8 to 32)
+  RP_SCAN_INTENSITY how hard scheduled scans lean on the disks: aggressive,
+                    balanced or low (default low)
+  RP_WORKERS        parallel directory walkers for an aggressive scan
+                    (default: 4 per core, 8 to 32)
   RP_ZFS_LIST_FILE  output of the host script, when /dev/zfs is not passed in
                     (default <RP_DATA>/zfs-list.txt)
 `
@@ -65,7 +74,7 @@ func main() {
 	case "serve":
 		err = cmdServe()
 	case "scan":
-		err = cmdScan()
+		err = cmdScan(os.Args[2:])
 	case "bench":
 		err = cmdBench(os.Args[2:])
 	case "doctor":
@@ -92,6 +101,8 @@ type settings struct {
 	insecureHTTP bool
 	trustProxy   bool
 	scanInterval time.Duration
+	// scheduled is the intensity of scans nobody is waiting for.
+	scheduled scan.Intensity
 }
 
 func envList(name string) []string {
@@ -162,6 +173,10 @@ func loadSettings() (settings, error) {
 		}
 		s.scanInterval = d
 	}
+	var err error
+	if s.scheduled, err = scan.ParseIntensity(envOr("RP_SCAN_INTENSITY", "low")); err != nil {
+		return s, fmt.Errorf("RP_SCAN_INTENSITY: %w", err)
+	}
 	if (s.cert == "") != (s.key == "") {
 		return s, errors.New("RP_TLS_CERT and RP_TLS_KEY must be set together")
 	}
@@ -221,7 +236,7 @@ func cmdServe() error {
 		log.Printf("read-only mode: nothing on the pool will be changed")
 	}
 
-	go schedule(ctx, app, s.scanInterval)
+	go schedule(ctx, app, s.scanInterval, s.scheduled)
 
 	errc := make(chan error, 1)
 	switch {
@@ -254,11 +269,14 @@ func cmdServe() error {
 }
 
 // schedule scans once at start if there is no index yet, then on an interval.
-func schedule(ctx context.Context, app *core.App, every time.Duration) {
-	run := func(why string) {
-		log.Printf("scan started (%s)", why)
+// The first scan is aggressive, because nothing can be browsed until it
+// finishes; later ones run at the configured intensity, because nobody is
+// waiting for them.
+func schedule(ctx context.Context, app *core.App, every time.Duration, scheduled scan.Intensity) {
+	run := func(why string, intensity scan.Intensity) {
+		log.Printf("scan started (%s, %s intensity)", why, intensity)
 		start := time.Now()
-		info, err := app.Scan(ctx)
+		info, err := app.Scan(ctx, intensity)
 		switch {
 		case errors.Is(err, core.ErrScanRunning):
 			log.Printf("scan skipped: one is already running")
@@ -273,7 +291,7 @@ func schedule(ctx context.Context, app *core.App, every time.Duration) {
 		}
 	}
 	if app.ScanStatus().Index == nil {
-		run("no index yet")
+		run("no index yet", scan.Aggressive)
 	}
 	if every <= 0 {
 		return
@@ -285,12 +303,21 @@ func schedule(ctx context.Context, app *core.App, every time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			run("scheduled")
+			run("scheduled", scheduled)
 		}
 	}
 }
 
-func cmdScan() error {
+func cmdScan(args []string) error {
+	fs := flag.NewFlagSet("scan", flag.ContinueOnError)
+	intensityName := fs.String("intensity", "aggressive", "scan intensity: aggressive, balanced or low")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	intensity, err := scan.ParseIntensity(*intensityName)
+	if err != nil {
+		return err
+	}
 	s, err := loadSettings()
 	if err != nil {
 		return err
@@ -303,11 +330,11 @@ func cmdScan() error {
 	}
 	defer closeAll()
 	start := time.Now()
-	info, err := app.Scan(ctx)
+	info, err := app.Scan(ctx, intensity)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("scanned %d files and %d folders in %s\n", info.Files, info.Dirs, time.Since(start).Round(time.Millisecond))
+	fmt.Printf("scanned %d files and %d folders in %s at %s intensity\n", info.Files, info.Dirs, time.Since(start).Round(time.Millisecond), intensity)
 	fmt.Printf("apparent size %s, on disk %s, %d hardlinked files, %d errors\n", human(info.Size), human(info.Disk), info.Hardlinked, info.Errors)
 	for _, w := range app.ScanStatus().Warnings {
 		fmt.Printf("warning: %s\n", w)
