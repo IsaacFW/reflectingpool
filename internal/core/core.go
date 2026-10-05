@@ -104,9 +104,22 @@ func New(bg context.Context, cfg Config, db *sql.DB) (*App, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.ix = ix
+		// An index of different roots describes paths this configuration
+		// cannot reach. Start without one; the first scan replaces it.
+		if sameRoots(ix.Info.Roots, cfg.Roots) {
+			a.ix = ix
+		} else {
+			ix.Close()
+		}
 	}
 	return a, nil
+}
+
+func sameRoots(a, b []string) bool {
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }
 
 func (a *App) Close() {

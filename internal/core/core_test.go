@@ -278,6 +278,37 @@ func TestAnnotationSurvivesRestart(t *testing.T) {
 	}
 }
 
+// After the container's mappings change, the saved index describes paths that
+// no longer exist. It must not be served; the next scan replaces it.
+func TestIndexOfOtherRootsIsNotUsed(t *testing.T) {
+	e := newEnv(t, false, map[string]string{"share/a.txt": "a"})
+	e.scan()
+	data := e.app.Config().DataDir
+	e.app.Close()
+
+	other := t.TempDir()
+	os.MkdirAll(filepath.Join(other, "elsewhere"), 0o755)
+	os.WriteFile(filepath.Join(other, "elsewhere/b.txt"), []byte("bb"), 0o644)
+	moved := openEnv(t, other, data, false)
+	if err := moved.app.View(func(*index.Index) error { return nil }); !errors.Is(err, ErrNoIndex) {
+		t.Fatalf("an index of the old roots is being served: %v", err)
+	}
+	if moved.app.ScanStatus().Index != nil {
+		t.Error("status reports the old index")
+	}
+	moved.scan()
+	if st := moved.app.ScanStatus(); st.Index == nil || st.Index.Size != 2 {
+		t.Errorf("after rescanning the new roots: %+v", st.Index)
+	}
+
+	// The same roots still pick the index up again.
+	moved.app.Close()
+	again := openEnv(t, other, data, false)
+	if again.app.ScanStatus().Index == nil {
+		t.Error("an index of the same roots was discarded")
+	}
+}
+
 func TestInputValidation(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, false, map[string]string{"share/a.txt": "a", "loose.txt": "l"})
