@@ -154,7 +154,6 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
   const readOnly = !!(session.value && session.value.read_only);
   const outside = entry.share === 0;
 
-  useEffect(() => { setForm(from(annotation)); setError(''); }, [entry.id, annotation && annotation.updated]);
   useEffect(() => {
     api('GET', '/api/prefixes').then((r) => setKnown(r.prefixes)).catch(() => {});
   }, []);
@@ -287,6 +286,6 @@ export function Inspector({ id, rev, onOpen, onChanged }) {
         </div>`}
       ${isDir && html`<div class="actions"><button class="btn small" type="button" onClick=${() => onOpen(e)}>Open this folder</button></div>`}
       <${Preview} entry=${e} />
-      <${AnnotationForm} entry=${e} annotation=${annotation} onSaved=${onChanged} />
+      <${AnnotationForm} key=${`${e.id}:${annotation ? annotation.updated || "skipped" : ""}`} entry=${e} annotation=${annotation} onSaved=${onChanged} />
     </aside>`;
 }

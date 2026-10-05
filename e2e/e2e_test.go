@@ -17,11 +17,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
 )
@@ -176,6 +178,13 @@ func open(t *testing.T) *page {
 	p := &page{t: t, ctx: ctx}
 	if err := chromedp.Do(ctx); err != nil { // starts the browser
 		t.Fatalf("starting the browser: %v", err)
+	}
+	// A slower processor brings out mistakes of timing that a fast machine
+	// hides: RP_E2E_SLOW=6 runs the page six times slower.
+	if rate, _ := strconv.ParseFloat(os.Getenv("RP_E2E_SLOW"), 64); rate > 1 {
+		if _, err := chromedp.Call(ctx, emulation.SetCPUThrottlingRate, emulation.SetCPUThrottlingRateParams{Rate: rate}); err != nil {
+			t.Fatalf("slowing the page: %v", err)
+		}
 	}
 	// Everything the page writes to the console, every uncaught error, and
 	// everything the browser refuses (which is how a breach of the content

@@ -4,6 +4,7 @@ module github.com/IsaacFW/reflectingpool/e2e
 
 go 1.27
 
-require github.com/chromedp/chromedp v0.19.1
-
-require github.com/chromedp/cdproto v0.157.4 // indirect
+require (
+	github.com/chromedp/cdproto v0.157.4
+	github.com/chromedp/chromedp v0.19.1
+)

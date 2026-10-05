@@ -44,10 +44,20 @@ export function VirtualList(props) {
   // the list is redrawn by hand when they do.
   const store = useRef({ key: '', rev: 0, total: -1, pages: /** @type {Map<number, T[]>} */ (new Map()), asked: /** @type {Set<number>} */ (new Set()) });
   const [, redraw] = useState(0);
-  const [scrollTop, setScrollTop] = useState(0);
   const [viewH, setViewH] = useState(600);
-  const [cursor, setCursor] = useState(-1);
-  const [error, setError] = useState('');
+  // Where the user is in the list. It belongs to one list: kept with the
+  // list's key, it starts afresh the moment another list is shown, with no
+  // step afterwards that could undo something the user has just done.
+  const fresh = { key: props.listKey, scrollTop: 0, cursor: -1, error: '' };
+  const [place, setPlace] = useState(fresh);
+  const { scrollTop, cursor, error } = place.key === props.listKey ? place : fresh;
+  /** @param {Partial<typeof fresh> | ((now: typeof fresh) => Partial<typeof fresh>)} change */
+  const move = (change) => setPlace((now) => {
+    const from = now.key === props.listKey ? now : fresh;
+    return { ...from, ...(typeof change === 'function' ? change(from) : change) };
+  });
+  const setCursor = (/** @type {number} */ i) => move({ cursor: i });
+  const setError = (/** @type {string} */ text) => move({ error: text });
 
   const s = store.current;
   if (s.key !== props.listKey) {
@@ -61,9 +71,6 @@ export function VirtualList(props) {
   }
 
   useEffect(() => {
-    setCursor(-1);
-    setScrollTop(0);
-    setError('');
     if (box.current) box.current.scrollTop = 0;
   }, [props.listKey]);
 
@@ -91,7 +98,7 @@ export function VirtualList(props) {
       s.total = total;
       if (page === 0 && props.startAt) {
         const at = rows.findIndex(props.startAt);
-        if (at >= 0) setCursor((c) => (c < 0 ? at : c));
+        if (at >= 0) move((now) => (now.cursor < 0 ? { cursor: at } : {}));
       }
       redraw((n) => n + 1);
     }).catch((e) => {
@@ -192,7 +199,7 @@ export function VirtualList(props) {
 
   return html`
     <div class="vl" ref=${box} tabindex="0" role="grid" aria-label=${props.label} aria-rowcount=${Math.max(0, total) + 1}
-      onScroll=${(/** @type {Event} */ e) => setScrollTop(/** @type {HTMLElement} */ (e.currentTarget).scrollTop)} onKeyDown=${onKey}>
+      onScroll=${(/** @type {Event} */ e) => move({ scrollTop: /** @type {HTMLElement} */ (e.currentTarget).scrollTop })} onKeyDown=${onKey}>
       <div class="vl-head" role="row" aria-rowindex="1">${props.head}</div>
       ${error ? html`
         <div class="vl-empty" role="alert">Could not load this list: ${error}

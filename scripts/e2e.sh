@@ -23,5 +23,5 @@ fi
 exec docker run --rm --user "$(id -u):$(id -g)" \
   -v "$repo":/src -w /src/e2e $mount \
   -e HOME=/src/.cache/go -e GOCACHE=/src/.cache/go/build-cgo0 -e GOMODCACHE=/src/.cache/go/mod \
-  -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false -e RP_E2E_SHOTS="$shots" -e RP_E2E_BIG \
+  -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false -e RP_E2E_SHOTS="$shots" -e RP_E2E_BIG -e RP_E2E_SLOW \
   reflectingpool-e2e go test -count=1 "$@" ./...
