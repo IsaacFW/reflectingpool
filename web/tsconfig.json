@@ -1,0 +1,18 @@
+{
+  // Type checking only: nothing is compiled, and the browser runs the files
+  // in app/ exactly as they are. Run it with scripts/typecheck.sh.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "typeRoots": []
+  },
+  "include": ["app/*.js"]
+}

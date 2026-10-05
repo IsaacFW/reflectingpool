@@ -168,5 +168,6 @@ For the reference deployment, to be confirmed by benchmark:
 
 ## Open items
 
-- Presentation and frontend stack: decided at the design evaluation.
+- Step 3 is under way: the shell (sign-in, scans, settings) and the Space list with its inspector are built. Still to build: Review, Find, the map, Overview, Annotations and Storage.
+- The interface has been run in headless Chromium only. Firefox and Safari, and PDF and video previews as a person sees them, are unchecked.
 - Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, saving annotations, and the review timings that `bench` now reports.

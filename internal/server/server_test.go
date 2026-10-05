@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/IsaacFW/reflectingpool/internal/appdb"
@@ -415,6 +416,62 @@ func TestErrorCodesTotalsAndBlankSaves(t *testing.T) {
 		t.Errorf("describing a missing item: %d %s", r.status, r.raw)
 	}
 	h.expect(200, h.request("PUT", "/api/entries/"+gone+"/annotation", map[string]any{}, nil))
+}
+
+func TestTheInterfaceIsServed(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+
+	// Every screen is the same page, served under a policy with nothing
+	// inline, and needs no session: it is where signing in happens.
+	var etag string
+	for _, path := range []string{"/", "/space?path=/pool/media", "/settings"} {
+		r := h.expect(200, h.request("GET", path, nil, nil))
+		csp := r.header.Get("Content-Security-Policy")
+		if !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "style-src 'self'") || strings.Contains(csp, "unsafe") {
+			t.Errorf("%s: policy = %q", path, csp)
+		}
+		if !strings.HasPrefix(r.header.Get("Content-Type"), "text/html") || !strings.Contains(string(r.raw), `src="/app/main.js"`) {
+			t.Errorf("%s is not the page: %s %.80s", path, r.header.Get("Content-Type"), r.raw)
+		}
+		if r.header.Get("X-Frame-Options") != "DENY" || r.header.Get("Cache-Control") != "no-cache" {
+			t.Errorf("%s: headers %v", path, r.header)
+		}
+		etag = r.header.Get("ETag")
+	}
+	// A copy the browser already holds is confirmed, not sent again.
+	if r := h.request("GET", "/", nil, map[string]string{"If-None-Match": etag}); r.status != 304 || len(r.raw) != 0 {
+		t.Errorf("revalidation: %d with %d bytes", r.status, len(r.raw))
+	}
+
+	for path, ctype := range map[string]string{"/app/main.js": "text/javascript", "/lib/preact.js": "text/javascript", "/style.css": "text/css", "/app/icon.svg": "image/svg+xml"} {
+		r := h.expect(200, h.request("GET", path, nil, nil))
+		if !strings.HasPrefix(r.header.Get("Content-Type"), ctype) || r.header.Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("%s: %s", path, r.header.Get("Content-Type"))
+		}
+		// Only the page itself may load anything.
+		if got := r.header.Get("Content-Security-Policy"); !strings.HasPrefix(got, "default-src 'none'") {
+			t.Errorf("%s: policy = %q", path, got)
+		}
+	}
+	// What is not part of the interface is not served, wherever it sits.
+	for _, path := range []string{"/nope", "/app/nope.js", "/lib/update.sh", "/lib/CHECKSUMS", "/lib/LICENSE-preact", "/embed.go", "/app/%2e%2e/embed.go", "/api/nope"} {
+		if r := h.request("GET", path, nil, nil); r.status != 404 {
+			t.Errorf("%s: %d, want 404", path, r.status)
+		}
+	}
+
+	// A folder on disk can stand in for the built-in files while working on them.
+	dev := newHarness(t, Options{Web: fstest.MapFS{"index.html": {Data: []byte("<!doctype html><title>dev</title>")}}}, false)
+	if r := dev.expect(200, dev.request("GET", "/", nil, nil)); !strings.Contains(string(r.raw), "<title>dev</title>") {
+		t.Errorf("development files not served: %s", r.raw)
+	}
+
+	// The first-run screen names what will be scanned.
+	h.signIn()
+	r := h.expect(200, h.request("GET", "/api/session", nil, nil))
+	if roots, _ := r.body["roots"].([]any); len(roots) != 1 || roots[0] != h.root {
+		t.Errorf("session roots = %v", r.body["roots"])
+	}
 }
 
 func TestQueueToolsOverHTTP(t *testing.T) {
