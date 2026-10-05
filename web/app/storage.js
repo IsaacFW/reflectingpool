@@ -37,6 +37,9 @@ export function Storage() {
   const whole = (/** @type {Dataset} */ d) => d.used + (d.zfs ? d.zfs.used_by_snapshots : 0);
   const largest = rep.datasets.reduce((n, d) => Math.max(n, whole(d)), 0);
   const anyZFS = rep.datasets.some((d) => d.fstype === 'zfs');
+  // Whether read times are kept is worth a column only where datasets differ.
+  const kept = [...new Set(rep.datasets.map((d) => clocks(d.zfs)).filter(Boolean))];
+  const clockColumn = kept.length > 1;
 
   return html`
     <div class="stack">
@@ -57,7 +60,7 @@ export function Storage() {
           <table class="list">
             <thead><tr>
               <th>Dataset</th><th class="c-bar"></th><th class="num c-size">Used</th><th class="num c-size">By files</th>
-              <th class="num c-snap">By snapshots</th><th class="num c-items">Snapshots</th><th class="num c-pct">Ratio</th><th class="c-note">Read times</th>
+              <th class="num c-snap">By snapshots</th><th class="num c-items">Snapshots</th><th class="num c-pct">Ratio</th>${clockColumn && html`<th class="c-note">Read times</th>`}
             </tr></thead>
             <tbody>
               ${rep.datasets.map((d) => {
@@ -74,13 +77,14 @@ export function Storage() {
                     <td class="num">${d.zfs ? bytes(snap) : ''}</td>
                     <td class="num">${d.zfs ? count(d.snapshots) : ''}</td>
                     <td class="num" title="How much smaller compression makes the data">${d.zfs && d.zfs.compress_ratio ? `${d.zfs.compress_ratio.toFixed(2)}×` : ''}</td>
-                    <td class="c-note">${clocks(d.zfs)}</td>
+                    ${clockColumn && html`<td class="c-note">${clocks(d.zfs)}</td>`}
                   </tr>`;
               })}
             </tbody>
           </table>
         </div>
       </div>
+      ${kept.length === 1 && html`<p class="hint">${kept[0]} on ${rep.datasets.length === 1 ? "this dataset" : "any of these datasets"}${kept[0].includes("not") ? ", so nothing here can tell when a file was last opened." : "."}</p>`}
       <p class="hint">Space held by snapshots belongs to a dataset, not to a folder, so it cannot be browsed in Space.
         Removing a file frees its space only once the snapshots that still hold it have expired.</p>
     </div>`;

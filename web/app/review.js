@@ -1,12 +1,12 @@
 // Review: one item at a time, its preview beside it, in the order the user
 // chose. Saving never waits: the next item shows at once and the write
 // finishes behind it.
-import { api, ApiError, indexId, session, superseded } from './api.js';
+import { api, ApiError, indexId, lockedShares, session, superseded } from './api.js';
 import { BLANK, bodyOf, Fields, formFrom, isBlank, loadPrefixes, prefixList, sameForm } from './annotate.js';
 import { ago, bytes, count, plural } from './format.js';
 import { Preview } from './inspector.js';
 import { html, useEffect, useLayoutEffect, useRef, useState } from './lib.js';
-import { DEFAULT, defFromParams, GROUP_KEYS, groupLabel, lastParams, ORDERS, paramsFromDef, PRESETS, rememberParams, resolve, sentence } from './queue.js';
+import { DEFAULT, defFromParams, GROUP_KEYS, groupPhrase, lastParams, ORDERS, paramsFromDef, PRESETS, rememberParams, resolve, sentence } from './queue.js';
 import { go, href, route, say } from './state.js';
 
 /** @typedef {import('./api.js').Entry} Entry */
@@ -128,7 +128,7 @@ function ItemForm(props) {
   const blank = isBlank(form);
   return html`
     <form class="stack" onSubmit=${(/** @type {Event} */ e) => { e.preventDefault(); props.onSubmit(form, touched); }}>
-      <${Fields} form=${form} onChange=${change} disabled=${props.readOnly} id="rv" noteRef=${note} displayRef=${display} onNoteKey=${onNoteKey} />
+      <${Fields} form=${form} onChange=${change} disabled=${props.readOnly} id="rv" folder=${props.entry.kind === "dir"} noteRef=${note} displayRef=${display} onNoteKey=${onNoteKey} />
       <div class="rv-btns">
         <button class="btn primary" type="submit">
           ${props.readOnly ? 'Next' : props.lookingBack ? (touched ? 'Save the change' : 'Leave as it is') : blank ? 'Skip' : 'Save and next'}
@@ -229,7 +229,7 @@ function Builder({ def, onClose }) {
           : look.q && html`
             <p><b>${plural(look.q.remaining, 'item', 'items')}</b> to go, of ${count(look.q.total)} (${bytes(look.q.total_size)}),
               in ${plural(look.q.group_count, 'group', 'groups')}.</p>
-            <ol>${look.q.groups.slice(0, 6).map((g, i) => html`<li key=${i}>${groupLabel(g)}: ${plural(g.remaining, 'item', 'items')}, ${bytes(g.size)}</li>`)}</ol>
+            <ol>${look.q.groups.slice(0, 6).map((g, i) => html`<li key=${i}>${groupPhrase(g, d.kind)}: ${plural(g.remaining, 'item', 'items')}, ${bytes(g.size)}</li>`)}</ol>
             <p class="hint">Groups run from the one holding the most bytes to the least; age groups run oldest first.</p>`}
         <div class="rv-btns">
           <button class="btn primary" type="button" onClick=${() => { go('review', paramsFromDef(d)); onClose(); }}>Use this order</button>
@@ -332,7 +332,9 @@ function Session({ def }) {
   const items = q ? q.items.filter((it) => !waiting.has(it.id) && !aside.current.has(it.id)) : [];
   const head = items[0] || null;
   const group = q && q.groups[0] ? q.groups[0] : null;
-  const label = group ? groupLabel(group) : '';
+  // The group in words: "video files in media".
+  const label = group ? groupPhrase(group, def.kind) : '';
+  const Label = label ? label[0].toUpperCase() + label.slice(1) : '';
 
   // Say so when one group ends and the next begins.
   useEffect(() => {
@@ -343,6 +345,8 @@ function Session({ def }) {
   }, [label]);
 
   const lookingBack = back !== null;
+  // Nothing can be recorded for an item in a share that is mapped read-only.
+  const locked = !!head && lockedShares.value.has(head.share);
   const folder = climb.length ? climb[climb.length - 1] : null;
   const target = lookingBack ? trail[/** @type {number} */ (back)].entry : folder ? folder.entry : head;
   const initial = lookingBack ? trail[/** @type {number} */ (back)].form : folder ? folder.form
@@ -351,7 +355,7 @@ function Session({ def }) {
   function submit(/** @type {Form} */ form, /** @type {boolean} */ touched) {
     if (!target || halted) return;
     setLine('');
-    if (readOnly) {
+    if (readOnly || locked) {
       // Nothing is recorded; the queue is only walked through.
       const at = offset + 1;
       setOffset(at);
@@ -467,7 +471,7 @@ function Session({ def }) {
     setConfirmSkip(false);
     try {
       const r = await api('POST', '/api/queue/skip', { ...body.current, group: group.values.map((v) => v.value) });
-      say(`Skipped ${plural(r.skipped, 'item', 'items')} in ${label}.`);
+      say(`Skipped ${count(r.skipped)} ${label}.`);
       await fetchQueue();
     } catch (e) {
       if (!superseded(e)) say(e instanceof Error ? e.message : String(e));
@@ -477,6 +481,11 @@ function Session({ def }) {
   const top = html`
     <div class="rv-top">
       <div class="q"><b>Reviewing:</b> <span>${sentence(def)}${def.covered ? ', leaving out what is inside described folders' : ''}.</span></div>
+      <div class="seg" role="group" aria-label="Review files or folders">
+        ${[["file", "Files"], ["dir", "Folders"], ["", "Both"]].map(([k, text]) => html`
+          <button type="button" key=${k} aria-pressed=${def.kind === k ? "true" : "false"}
+            onClick=${() => go("review", paramsFromDef({ ...def, kind: /** @type {QueueDef["kind"]} */ (k) }))}>${text}</button>`)}
+      </div>
       <button class="btn small" type="button" onClick=${() => setBuilding(!building)}>${building ? 'Close' : 'Change order'}</button>
     </div>
     ${building && html`<${Builder} def=${def} onClose=${() => setBuilding(false)} />`}`;
@@ -514,22 +523,24 @@ function Session({ def }) {
     <div class="rv-grid">
       <div class="rv-queue">
         <div class="panel gnow">
-          <b>${label}</b>
+          <div class="muted">Now going through</div>
+          <b>${Label}</b>
           <div class="cnt">${count(leftInGroup)}</div>
           <div class="muted">left of ${count(group ? group.total : 0)} in this group</div>
           <div class="meter"><i style=${{ width: group && group.total ? `${(100 * (group.total - leftInGroup)) / group.total}%` : '0%' }}></i></div>
           <div class="muted">Group ${count(q.group_position)} of ${count(q.group_total)}. ${count(leftInAll)} left in the whole queue.</div>
           ${!readOnly && !lookingBack && !folder && (confirmSkip
-            ? html`<div class="note-line warn">Skip the ${plural(leftInGroup, 'item', 'items')} left in ${label}?
+            ? html`<div class="note-line warn">Skip all ${count(leftInGroup)} ${label} that are left? They are marked as skipped, with nothing recorded.
                 <div class="rv-btns"><button class="btn small" type="button" onClick=${skipGroup}>Yes, skip them</button>
                 <button class="btn small" type="button" onClick=${() => setConfirmSkip(false)}>No</button></div></div>`
-            : html`<div><button class="btn small" type="button" disabled=${leftInGroup === 0} onClick=${() => setConfirmSkip(true)}>Skip the rest of this group</button></div>`)}
+            : html`<div><button class="btn small" type="button" disabled=${leftInGroup === 0} onClick=${() => setConfirmSkip(true)}>Skip the ${count(leftInGroup)} left</button>
+                <div class="hint">That is every remaining one of the ${label}.</div></div>`)}
         </div>
         ${q.groups.length > 1 && html`
           <div class="panel">
             <h2 class="t">Next groups</h2>
             <div class="glist">${q.groups.slice(1, 9).map((g, i) => html`
-              <div class="g" key=${i}><span>${groupLabel(g)}</span><span class="n">${count(g.remaining)}</span>
+              <div class="g" key=${i}><span>${groupPhrase(g, def.kind)}</span><span class="n">${count(g.remaining)}</span>
                 <div class="meter"><i style=${{ width: g.total ? `${(100 * (g.total - g.remaining)) / g.total}%` : '0%' }}></i></div></div>`)}
             </div>
           </div>`}
@@ -557,6 +568,7 @@ function Session({ def }) {
             </div></div></div>`}
         ${halted && html`<div class="note-line warn" role="alert">Three saves in a row did not go through, so the review has stopped moving on. Deal with the one above to carry on.</div>`}
         ${readOnly && html`<div class="note-line">Read-only mode. You can look through the queue; nothing is recorded.</div>`}
+        ${!readOnly && locked && html`<div class="note-line warn">This share is mapped into the container read-only, so nothing can be recorded for this item. Ctrl+Enter moves on.</div>`}
         ${lookingBack && html`<div class="note-line">Looking back at an item from this visit. Change it and save, or leave it as it is.</div>`}
         ${line && html`<div class="note-line" role="status">${line}</div>`}
         ${target && html`
@@ -565,6 +577,9 @@ function Session({ def }) {
             <div class="rv-path fs">
               ${steps.map((p) => html`<button type="button" key=${p} title="Describe this folder instead" disabled=${readOnly || lookingBack} onClick=${() => climbTo(p)}>${p.slice(p.lastIndexOf('/') + 1)}</button><span>/</span>`)}
             </div>
+            ${!readOnly && !locked && !lookingBack && !folder && steps.length > 0 && html`
+              <div><button class="btn small" type="button" onClick=${climbUp}>Describe the folder instead <span class="kbd">Alt+Up</span></button></div>`}
+            ${folder && html`<div><button class="btn small" type="button" onClick=${descend}>Back to the item <span class="kbd">Alt+Down</span></button></div>`}
             <div class="rv-facts">
               <span>${target.kind === 'dir' ? `Folder, ${plural(target.files, 'file', 'files')}` : target.type}</span>
               <span>${bytes(target.size)}${target.disk !== target.size ? ` (${bytes(target.disk)} on disk)` : ''}</span>
@@ -572,7 +587,7 @@ function Session({ def }) {
             </div>
           </div>
           <${ItemForm} key=${`${target.id}:${lookingBack ? 'b' + back : folder ? 'f' : 'h'}`} entry=${target} initial=${initial}
-            readOnly=${readOnly} paused=${building || halted} canBack=${readOnly ? offset > 0 : (trail.length > 0 && back !== 0) || climb.length > 0}
+            readOnly=${readOnly || (locked && !lookingBack && !folder)} paused=${building || halted} canBack=${readOnly ? offset > 0 : (trail.length > 0 && back !== 0) || climb.length > 0}
             lookingBack=${lookingBack} onSubmit=${submit} onBack=${goBack} onClimb=${climbUp} onDescend=${descend}
             onChange=${(/** @type {Form} */ f) => { if (!lookingBack && !folder && head) draft = { path: head.path || '', form: f }; }} />`}
         <div class="rv-keys">

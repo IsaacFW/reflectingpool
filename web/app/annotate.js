@@ -57,18 +57,18 @@ export function loadPrefixes() {
 }
 
 /**
- * @param {{form: Form, onChange: (f: Form) => void, disabled?: boolean, id?: string,
+ * @param {{form: Form, onChange: (f: Form) => void, disabled?: boolean, id?: string, folder?: boolean,
  *   noteRef?: {current: HTMLTextAreaElement | null}, displayRef?: {current: HTMLInputElement | null},
  *   onNoteKey?: (e: KeyboardEvent) => void}} props
  */
-export function Fields({ form, onChange, disabled, id = 'an', noteRef, displayRef, onNoteKey }) {
+export function Fields({ form, onChange, disabled, id = 'an', folder, noteRef, displayRef, onNoteKey }) {
   const known = prefixList.value || [];
   const set = (/** @type {keyof Form} */ k) => (/** @type {Event} */ e) =>
     onChange({ ...form, [k]: /** @type {HTMLInputElement} */ (e.target).value });
   const review = resolveReview(form.review_after);
   return html`
     <div class="field">
-      <label for=${id + '-note'}>What is it for?</label>
+      <label for=${id + '-note'}>${folder ? 'What is this folder for?' : 'What is this file for?'}</label>
       <textarea id=${id + '-note'} ref=${noteRef} rows="3" maxlength="10000" disabled=${disabled}
         value=${form.note} onInput=${set('note')} onKeyDown=${onNoteKey}></textarea>
     </div>

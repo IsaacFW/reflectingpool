@@ -115,3 +115,22 @@ export function groupLabel(/** @type {{values: {key: string, label: string}[]}} 
   if (!g.values.length) return 'Everything';
   return g.values.map((v) => (v.key === 'ext' && !v.label ? 'no extension' : v.label)).join(', ');
 }
+
+/**
+ * A group in words, so that nobody has to work out what "media, video"
+ * stands for: "video files in media".
+ * @param {{values: {key: string, label: string}[]}} g
+ * @param {QueueDef['kind']} kind
+ */
+export function groupPhrase(g, kind) {
+  /** @type {Record<string, string>} */
+  const by = Object.fromEntries(g.values.map((v) => [v.key, v.label]));
+  const noun = kind === 'dir' ? 'folders' : kind === '' ? 'items' : 'files';
+  let what = noun;
+  if (by.type !== undefined) what = by.type === 'folder' ? 'folders' : `${by.type} ${noun}`;
+  else if (by.ext !== undefined) what = by.ext ? `.${by.ext} ${noun}` : `${noun} with no extension`;
+  if (by.age !== undefined) what += `, ${by.age.toLowerCase()} old,`;
+  if (by.folder !== undefined) what += ` in ${by.folder}`;
+  else if (by.share !== undefined) what += ` in ${by.share}`;
+  return what.replace(/,$/, '');
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -213,7 +214,7 @@ func (a *App) PutAnnotation(ctx context.Context, id int64, in AnnotationInput) (
 		}
 		return ix.SetAnnot(ctx, index.Annot{Entry: id, State: stateOf(an), Prefixes: an.Prefixes})
 	})
-	return an, err
+	return an, writeFailure(err)
 }
 
 // skipChunk bounds the memory a bulk skip uses, however large the group. It
@@ -270,7 +271,7 @@ func (a *App) SkipGroup(ctx context.Context, spec index.QueueSpec, group []any) 
 		}
 		return nil
 	})
-	return total, err
+	return total, writeFailure(err)
 }
 
 // DeleteAnnotation removes an item's annotation, returning it to review queues.
@@ -280,7 +281,7 @@ func (a *App) DeleteAnnotation(ctx context.Context, id int64) error {
 	}
 	a.writeMu.RLock()
 	defer a.writeMu.RUnlock()
-	return a.viewAt(ctx, func(ix *index.Index) error {
+	return writeFailure(a.viewAt(ctx, func(ix *index.Index) error {
 		t, err := a.target(ctx, ix, id)
 		if err != nil {
 			return err
@@ -295,7 +296,7 @@ func (a *App) DeleteAnnotation(ctx context.Context, id int64) error {
 			return err
 		}
 		return ix.ClearAnnot(ctx, id)
-	})
+	}))
 }
 
 // liveIdentity reads the item's identity from disk as it is now, which may be
@@ -373,8 +374,11 @@ type ShareInfo struct {
 	Orphaned  int `json:"orphaned"`
 	// CoveredBytes counts everything inside annotated items; an annotated
 	// folder covers all it contains.
-	CoveredBytes int64  `json:"covered_bytes"`
-	Error        string `json:"error,omitempty"`
+	CoveredBytes int64 `json:"covered_bytes"`
+	// Writable is false when nothing can be recorded in the share: the
+	// program is in read-only mode, or the share is mapped read-only.
+	Writable bool   `json:"writable"`
+	Error    string `json:"error,omitempty"`
 }
 
 func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
@@ -393,6 +397,7 @@ func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
 		}
 		for _, sh := range shares {
 			info := ShareInfo{Row: sh, Skipped: int(skipped[sh.ID])}
+			info.Writable = !a.cfg.ReadOnly && unix.Access(sh.Path, unix.W_OK) == nil
 			all, err := a.store(sh.Path).All()
 			if err != nil {
 				info.Error = err.Error()
@@ -812,7 +817,7 @@ func (a *App) DeleteMissingAnnotation(ctx context.Context, shareID int64, path s
 	}
 	a.writeMu.RLock()
 	defer a.writeMu.RUnlock()
-	return a.viewAt(ctx, func(ix *index.Index) error {
+	return writeFailure(a.viewAt(ctx, func(ix *index.Index) error {
 		share, err := ix.Entry(ctx, shareID)
 		if err != nil {
 			return err
@@ -836,5 +841,36 @@ func (a *App) DeleteMissingAnnotation(ctx context.Context, shareID int64, path s
 			return InputError("this note belongs to an item that still exists; remove it from the item")
 		}
 		return store.Delete(path)
-	})
+	}))
+}
+
+// ShareReadOnlyError reports that nothing can be written into a share,
+// usually because the pool was mapped into the container read-only.
+type ShareReadOnlyError struct {
+	Path string // the share, or "" when it could not be told from the failure
+}
+
+func (e *ShareReadOnlyError) Error() string {
+	where := "this share"
+	if e.Path != "" {
+		where = e.Path
+	}
+	return where + " cannot be written to from inside the container, so nothing can be recorded there. " +
+		"Give the path read-write access (in Unraid: Read/Write - Slave), " +
+		"or set RP_READ_ONLY=1 to run the whole program read-only."
+}
+
+// writeFailure gives a failed write to a share's metadata folder a message a
+// person can act on. Without it, a pool mapped read-only shows as an internal
+// error whose cause is only in the log.
+func writeFailure(err error) error {
+	var pe *fs.PathError
+	if err == nil || !errors.As(err, &pe) {
+		return err
+	}
+	share, _, inMeta := strings.Cut(pe.Path, "/"+meta.Dir)
+	if !inMeta || !(errors.Is(err, unix.EROFS) || errors.Is(err, fs.ErrPermission)) {
+		return err
+	}
+	return &ShareReadOnlyError{Path: share}
 }

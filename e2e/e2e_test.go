@@ -615,7 +615,7 @@ func TestReview(t *testing.T) {
 	// One share, by file type: the films (600 kB) come before the text files.
 	p.signIn("review 01 signed in", "/review?shares=inbox&groups=type", `#rv-note`)
 	p.do("review 02 the largest film is first", heading("a.mkv"),
-		until(`document.querySelector('.gnow .cnt').textContent === '3' && document.activeElement.id === 'rv-note'`))
+		until(`document.querySelector('.gnow .cnt').textContent === '3' && document.querySelector('.gnow b').textContent === 'Video files' && document.activeElement.id === 'rv-note'`))
 
 	// Ctrl+Enter saves and moves on at once; with nothing typed it skips.
 	p.do("review 03 saved and on to the next",
@@ -639,7 +639,7 @@ func TestReview(t *testing.T) {
 
 	// The rest of the group in one go, and the next group starts.
 	p.do("review 07 skip the rest of the group",
-		chromedp.Click(has("button", "Skip the rest of this group")),
+		chromedp.Click(`//div[contains(@class,"gnow")]//button[starts-with(normalize-space(.), "Skip the")]`),
 		chromedp.Click(has("button", "Yes, skip them")),
 		heading("deep1.txt"),
 		chromedp.WaitVisible(`//div[contains(@class,"note-line")][contains(., "Finished video")]`),
@@ -897,6 +897,28 @@ func TestMap(t *testing.T) {
 		t.Error("the map came back after a reload although it was turned off")
 	}
 	p.do("map 06 on again", chromedp.Click(has("button", "Areas")), chromedp.WaitVisible(`.map .cell`))
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+// Folders are reviewed as readily as files: a switch beside the order, and a
+// button on a file's form for describing its folder instead.
+func TestReviewFolders(t *testing.T) {
+	p := open(t)
+	p.signIn("folders 01 signed in", "/review?shares=docs&groups=none", `#rv-note`)
+	p.do("folders 02 the switch",
+		chromedp.Click(`//div[@aria-label="Review files or folders"]/button[.="Folders"]`),
+		until(`location.search.includes('kind=dir') && document.querySelector('label[for=rv-note]')?.textContent === 'What is this folder for?'`),
+	)
+	p.do("folders 03 the folder button on a file",
+		chromedp.Navigate(base+"/review?shares=docs&groups=none&q=receipt"),
+		heading("receipt.pdf"),
+		chromedp.Click(`//button[starts-with(normalize-space(.), "Describe the folder instead")]`),
+		heading("taxes"),
+		chromedp.Click(`//button[starts-with(normalize-space(.), "Back to the item")]`),
+		heading("receipt.pdf"),
+	)
 	if c := p.complaints(); len(c) > 0 {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}

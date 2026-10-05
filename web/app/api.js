@@ -89,3 +89,13 @@ export function contentURL(/** @type {number} */ id) {
 export function superseded(/** @type {unknown} */ e) {
   return (e instanceof ApiError && e.code === 'index_changed') || (e instanceof DOMException && e.name === 'AbortError');
 }
+
+/** The shares nothing can be recorded in, by entry ID, with their names. A pool mapped read-only puts every share here. */
+export const lockedShares = signal(/** @type {Map<number, string>} */ (new Map()));
+
+/** Asks which shares can be written to. Called when the index changes, since share IDs change with it. */
+export function loadShareAccess() {
+  return api('GET', '/api/shares').then((r) => {
+    lockedShares.value = new Map(r.shares.filter((/** @type {{writable: boolean}} */ s) => !s.writable).map((/** @type {{id: number, name: string}} */ s) => [s.id, s.name]));
+  }).catch(() => {});
+}
