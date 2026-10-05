@@ -150,6 +150,25 @@ func TestAnnotationFollowsRenames(t *testing.T) {
 	if _, stale := stored["x7f3a9.mkv"]; stale || stored["wedding.mkv"].Orphaned {
 		t.Errorf("annotation file not updated: %+v", stored)
 	}
+
+	// The metadata folder is bookkeeping, not data: it is listed but its
+	// files are never offered for review.
+	var inside int
+	e.app.View(func(ix *index.Index) error {
+		rows, err := ix.Find(context.Background(), index.Filter{Name: "annotations.jsonl"}, index.Sort{}, 10, 0)
+		inside = len(rows)
+		return err
+	})
+	if inside != 0 {
+		t.Error("the scan indexed the contents of .reflection")
+	}
+	// A folder of the same name deeper in a share is the user's own.
+	os.MkdirAll(filepath.Join(e.root, "media/receipts", meta.Dir), 0o755)
+	os.WriteFile(filepath.Join(e.root, "media/receipts", meta.Dir, "mine.txt"), []byte("x"), 0o644)
+	e.scan()
+	if e.id(filepath.Join("media/receipts", meta.Dir, "mine.txt")) == 0 {
+		t.Error("a .reflection folder below the share root must be scanned normally")
+	}
 	if e.state("media/wedding.mkv")&index.StateNote == 0 {
 		t.Error("index does not show the renamed file as annotated")
 	}

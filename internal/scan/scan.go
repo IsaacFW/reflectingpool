@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -79,11 +80,18 @@ type Options struct {
 	Roots   []string
 	Workers int
 	// Exclude lists absolute directory paths that are recorded but not entered.
+	// A directory is also excluded when it is the same directory as one of
+	// these reached by another path, as happens when a folder inside the
+	// pool is also mapped into the container somewhere else.
 	Exclude []string
 	// CrossMount decides whether to enter a directory on a different
 	// filesystem from its parent. Nil means always enter.
 	CrossMount func(dev uint64) bool
-	Progress   *Progress
+	// ShareMetaDirs names directories that, directly inside a share, hold
+	// this program's own files. They are recorded but not entered, so the
+	// program's bookkeeping never shows up as data to review.
+	ShareMetaDirs []string
+	Progress      *Progress
 }
 
 type Result struct {
@@ -136,11 +144,12 @@ type link struct {
 }
 
 type walker struct {
-	opts    Options
-	exclude map[string]struct{}
-	prog    *Progress
-	nextID  atomic.Int64
-	out     chan []Entry
+	opts      Options
+	exclude   map[string]struct{}
+	excludeID map[linkKey]struct{} // the excluded directories by device and inode
+	prog      *Progress
+	nextID    atomic.Int64
+	out       chan []Entry
 
 	mu      sync.Mutex
 	cond    *sync.Cond
@@ -165,15 +174,20 @@ func Walk(ctx context.Context, opts Options, sink Sink) (Result, error) {
 		opts.Progress = &Progress{}
 	}
 	w := &walker{
-		opts:    opts,
-		exclude: make(map[string]struct{}, len(opts.Exclude)),
-		prog:    opts.Progress,
-		out:     make(chan []Entry, 4*opts.Workers),
-		links:   make(map[linkKey]link),
+		opts:      opts,
+		exclude:   make(map[string]struct{}, len(opts.Exclude)),
+		excludeID: make(map[linkKey]struct{}, len(opts.Exclude)),
+		prog:      opts.Progress,
+		out:       make(chan []Entry, 4*opts.Workers),
+		links:     make(map[linkKey]link),
 	}
 	w.cond = sync.NewCond(&w.mu)
 	for _, p := range opts.Exclude {
 		w.exclude[filepath.Clean(p)] = struct{}{}
+		var stx unix.Statx_t
+		if statx(unix.AT_FDCWD, p, 0, &stx) == nil && stx.Mode&unix.S_IFMT == unix.S_IFDIR {
+			w.excludeID[linkKey{devOf(&stx), stx.Ino}] = struct{}{}
+		}
 	}
 
 	var roots []*node
@@ -441,6 +455,10 @@ func (w *walker) subdir(it work, name string, stx *unix.Statx_t) {
 		}
 	}
 	if _, ok := w.exclude[path]; ok {
+		flags |= FlagExcluded
+	} else if _, ok := w.excludeID[linkKey{devOf(stx), stx.Ino}]; ok {
+		flags |= FlagExcluded
+	} else if parent.id == parent.share && slices.Contains(w.opts.ShareMetaDirs, name) {
 		flags |= FlagExcluded
 	}
 	c := w.newNode(parent, name, stx, flags)

@@ -158,6 +158,30 @@ func TestWalkSkipsZFSControlDir(t *testing.T) {
 	}
 }
 
+// The data directory is usually a folder inside the pool that the container
+// also sees at another path. It must be skipped whichever path names it.
+func TestWalkExcludesSameDirectoryByAnotherPath(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "appdata/reflectingpool/index/scan.db"), 5000)
+	write(t, filepath.Join(root, "appdata/other/config"), 10)
+	alias := filepath.Join(t.TempDir(), "data")
+	if err := os.Symlink(filepath.Join(root, "appdata/reflectingpool"), alias); err != nil {
+		t.Fatal(err)
+	}
+	sink := &memSink{}
+	res, err := Walk(context.Background(), Options{Roots: []string{root}, Exclude: []string{alias, "/does/not/exist"}}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := sink.paths(t)
+	if e := p["appdata/reflectingpool"]; e.Flags&FlagExcluded == 0 {
+		t.Error("the directory was not recognised through its other path")
+	}
+	if _, ok := p["appdata/reflectingpool/index"]; ok || res.Size != 10 {
+		t.Errorf("excluded directory was entered: total size %d", res.Size)
+	}
+}
+
 func TestWalkCancel(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, "a/b"), 1)

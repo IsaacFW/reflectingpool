@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -98,6 +99,9 @@ type Index struct {
 	db   *sql.DB
 	Path string
 	Info Info
+
+	queueMu sync.Mutex
+	queues  map[string][]QueueGroup // ranked groups per queue definition
 }
 
 func Open(path string) (*Index, error) {

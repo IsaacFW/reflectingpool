@@ -101,8 +101,12 @@ func NewBuilder(dir string, now time.Time) (*Builder, error) {
 	final := filepath.Join(dir, "scan-"+now.UTC().Format("20060102T150405.000Z")+".db")
 	b := &Builder{tmp: final + ".tmp", final: final, args: make([]any, 0, entryCols*rowsPerStmt)}
 	os.Remove(b.tmp)
+	// Building the lookup indexes sorts every row. Keep SQLite's spill files
+	// next to the index, on the data volume, rather than in memory or in a
+	// container's small /tmp.
+	os.Setenv("SQLITE_TMPDIR", dir)
 	// The file is disposable until Finish, so durability is traded for speed.
-	db, err := sql.Open("sqlite", dsn(b.tmp, "journal_mode(OFF)", "synchronous(OFF)", "locking_mode(EXCLUSIVE)", "cache_size(-262144)", "temp_store(MEMORY)"))
+	db, err := sql.Open("sqlite", dsn(b.tmp, "journal_mode(OFF)", "synchronous(OFF)", "locking_mode(EXCLUSIVE)", "cache_size(-65536)"))
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +234,8 @@ func (b *Builder) Finish(info Info, datasets []Dataset) (string, error) {
 			return "", err
 		}
 	}
+	// ANALYZE costs about a tenth of the index build and keeps the grouped
+	// queries off full-table plans.
 	if _, err := b.db.Exec(indexes + "ANALYZE;"); err != nil {
 		b.Abort()
 		return "", fmt.Errorf("building indexes: %w", err)

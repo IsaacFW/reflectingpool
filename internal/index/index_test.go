@@ -111,8 +111,15 @@ func TestTreeAndPaths(t *testing.T) {
 	if err != nil || total != 2 {
 		t.Fatalf("children: %d, %v", total, err)
 	}
-	if kids[1].Name != "music" || kids[1].Size != 4050 || kids[1].Files != 2 {
-		t.Errorf("music = %+v", kids[1])
+	// Which of movies and docs is charged for the hardlinked file depends on
+	// inode numbers, so only music's place in the order is not fixed.
+	for _, kid := range kids {
+		if kid.Name == "music" && (kid.Size != 4050 || kid.Files != 2) {
+			t.Errorf("music = %+v", kid)
+		}
+	}
+	if kids[0].Size < kids[1].Size {
+		t.Errorf("children not sorted by size: %d before %d", kids[0].Size, kids[1].Size)
 	}
 
 	big, err := ix.Lookup(ctx, filepath.Join(root, "media/movies/big.mkv"))

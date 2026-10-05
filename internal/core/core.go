@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -264,10 +265,13 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress) (index.Info, []
 		return index.Info{}, nil, err
 	}
 	res, err := scan.Walk(ctx, scan.Options{
-		Roots:    a.cfg.Roots,
-		Workers:  a.cfg.Workers,
-		Exclude:  a.cfg.Exclude,
-		Progress: prog,
+		Roots:   a.cfg.Roots,
+		Workers: a.cfg.Workers,
+		// The data directory often lives on the pool being scanned; indexing
+		// our own index would only add noise.
+		Exclude:       append(slices.Clone(a.cfg.Exclude), a.cfg.DataDir),
+		ShareMetaDirs: []string{meta.Dir},
+		Progress:      prog,
 		// Follow the pool into its child datasets, but not into unrelated
 		// filesystems that happen to be mounted inside it.
 		CrossMount: func(dev uint64) bool {

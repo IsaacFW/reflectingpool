@@ -2,6 +2,7 @@ package index
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -37,6 +38,14 @@ type QueueGroup struct {
 	keys []string // keys[d] identifies the group's ancestor at depth d
 }
 
+// key identifies the group among all groups of one queue.
+func (g *QueueGroup) key() string {
+	if len(g.keys) == 0 {
+		return ""
+	}
+	return g.keys[len(g.keys)-1]
+}
+
 type QueueResult struct {
 	// Groups still holding unreviewed items, in the order they will be
 	// served. Items come from the first.
@@ -56,14 +65,20 @@ var groupCols = map[string]string{
 const (
 	maxGroupsScanned  = 5000
 	maxGroupsReturned = 50
+	maxCachedQueues   = 64
 )
 
 // Queue returns the next unreviewed items for a review queue.
+//
+// It is called after every item a user annotates or skips, so it avoids
+// rescanning the index each time: how the groups rank depends only on the
+// scan and is cached, and what has been reviewed is read from the small
+// annotation cache.
 func (ix *Index) Queue(ctx context.Context, spec QueueSpec) (QueueResult, error) {
 	res := QueueResult{Groups: []QueueGroup{}, Items: []Row{}}
-	// Groups are ranked by everything in them, reviewed or not, so the order
-	// does not shift under the user as they work through a group.
-	spec.Filter.State = ""
+	// Review state is applied separately; an annotation-based filter has no
+	// meaning for items that are, by definition, not annotated yet.
+	spec.Filter.State, spec.Filter.Prefix = "", ""
 	where, args, err := spec.Filter.where()
 	if err != nil {
 		return res, err
@@ -84,53 +99,26 @@ func (ix *Index) Queue(ctx context.Context, spec QueueSpec) (QueueResult, error)
 		cols[i] = col
 	}
 
-	q := `SELECT COALESCE(SUM(a.entry IS NULL), 0), COALESCE(SUM(e.size), 0), COUNT(*)`
-	if len(cols) > 0 {
-		q += ", " + strings.Join(cols, ", ")
+	ranked, err := ix.rankedGroups(ctx, spec, cols, where, args)
+	if err != nil {
+		return res, err
 	}
-	q += rowFrom + where
-	if len(cols) > 0 {
-		q += " GROUP BY " + strings.Join(cols, ", ") + fmt.Sprintf(" ORDER BY 2 DESC LIMIT %d", maxGroupsScanned)
-	}
-	rows, err := ix.db.QueryContext(ctx, q, args...)
+	done, err := ix.reviewedCounts(ctx, cols, where, args)
 	if err != nil {
 		return res, err
 	}
 	var groups []QueueGroup
-	for rows.Next() {
-		g := QueueGroup{raw: make([]any, len(cols))}
-		dest := []any{&g.Remaining, &g.Size, &g.Total}
-		for i := range g.raw {
-			dest = append(dest, &g.raw[i])
-		}
-		if err := rows.Scan(dest...); err != nil {
-			rows.Close()
-			return res, err
-		}
-		groups = append(groups, g)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return res, err
-	}
-
-	// Rank with finished groups included, then drop them: a share must keep
-	// its place after its biggest group is done.
-	sortGroups(groups)
-	pending := groups[:0]
-	for _, g := range groups {
+	for _, g := range ranked {
+		g.Remaining = g.Total - done[g.key()]
 		if g.Remaining > 0 {
-			pending = append(pending, g)
+			res.Remaining += g.Remaining
+			groups = append(groups, g)
 		}
 	}
-	groups = pending
 	if len(groups) == 0 {
 		return res, nil
 	}
 	res.GroupCount = len(groups)
-	for _, g := range groups {
-		res.Remaining += g.Remaining
-	}
 	if len(groups) > maxGroupsReturned {
 		groups = groups[:maxGroupsReturned]
 	}
@@ -141,7 +129,7 @@ func (ix *Index) Queue(ctx context.Context, spec QueueSpec) (QueueResult, error)
 	}
 	res.Groups = groups
 
-	itemWhere, itemArgs := where+" AND a.entry IS NULL", args
+	itemWhere, itemArgs := where+" AND a.entry IS NULL", append([]any{}, args...)
 	for i, col := range cols {
 		itemWhere += " AND " + col + " = ?"
 		itemArgs = append(itemArgs, groups[0].raw[i])
@@ -151,6 +139,119 @@ func (ix *Index) Queue(ctx context.Context, spec QueueSpec) (QueueResult, error)
 		return res, err
 	}
 	return res, ix.FillPaths(ctx, res.Items)
+}
+
+// rankedGroups returns every group of a queue with its totals, in serving
+// order. Groups are ranked by everything in them, reviewed or not, so the
+// order does not shift under the user as they work, and a share keeps its
+// place after its biggest group is finished.
+func (ix *Index) rankedGroups(ctx context.Context, spec QueueSpec, cols []string, where string, args []any) ([]QueueGroup, error) {
+	keyBytes, err := json.Marshal(struct {
+		F Filter
+		G []string
+	}{spec.Filter, spec.Groups})
+	if err != nil {
+		return nil, err
+	}
+	cacheKey := string(keyBytes)
+	ix.queueMu.Lock()
+	cached, ok := ix.queues[cacheKey]
+	ix.queueMu.Unlock()
+	if ok {
+		return cached, nil
+	}
+
+	q := `SELECT COUNT(*), COALESCE(SUM(e.size), 0)`
+	if len(cols) > 0 {
+		q += ", " + strings.Join(cols, ", ")
+	}
+	q += ` FROM entries e` + where
+	if len(cols) > 0 {
+		q += " GROUP BY " + strings.Join(cols, ", ") + fmt.Sprintf(" ORDER BY 2 DESC LIMIT %d", maxGroupsScanned)
+	}
+	rows, err := ix.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var groups []QueueGroup
+	for rows.Next() {
+		g := QueueGroup{raw: make([]any, len(cols))}
+		dest := []any{&g.Total, &g.Size}
+		for i := range g.raw {
+			dest = append(dest, &g.raw[i])
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+		if g.Total > 0 {
+			groups = append(groups, g)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sortGroups(groups)
+
+	ix.queueMu.Lock()
+	if ix.queues == nil || len(ix.queues) >= maxCachedQueues {
+		ix.queues = make(map[string][]QueueGroup)
+	}
+	ix.queues[cacheKey] = groups
+	ix.queueMu.Unlock()
+	return groups, nil
+}
+
+// reviewedCounts counts, per group, the candidates that already carry an
+// annotation or were skipped. It walks the annotation cache, which is small,
+// rather than the entries.
+func (ix *Index) reviewedCounts(ctx context.Context, cols []string, where string, args []any) (map[string]int64, error) {
+	q := `SELECT COUNT(*)`
+	if len(cols) > 0 {
+		q += ", " + strings.Join(cols, ", ")
+	}
+	// CROSS JOIN pins the join order: start from the few annotations, not
+	// from every entry.
+	q += ` FROM annot a CROSS JOIN entries e ON e.id = a.entry` + where
+	if len(cols) > 0 {
+		q += " GROUP BY " + strings.Join(cols, ", ")
+	}
+	rows, err := ix.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	done := make(map[string]int64)
+	for rows.Next() {
+		var n int64
+		raw := make([]any, len(cols))
+		dest := []any{&n}
+		for i := range raw {
+			dest = append(dest, &raw[i])
+		}
+		if err := rows.Scan(dest...); err != nil {
+			return nil, err
+		}
+		keys := groupKeys(raw)
+		key := ""
+		if len(keys) > 0 {
+			key = keys[len(keys)-1]
+		}
+		done[key] = n
+	}
+	return done, rows.Err()
+}
+
+// groupKeys returns, for each depth of grouping, a string identifying the
+// group's ancestor at that depth.
+func groupKeys(raw []any) []string {
+	keys := make([]string, len(raw))
+	key := ""
+	for d, v := range raw {
+		key += fmt.Sprintf("%v\x00", v)
+		keys[d] = key
+	}
+	return keys
 }
 
 // sortGroups orders groups so that, at every level of grouping, the group
@@ -167,11 +268,8 @@ func sortGroups(groups []QueueGroup) {
 	}
 	for i := range groups {
 		g := &groups[i]
-		g.keys = make([]string, depth)
-		key := ""
-		for d := range depth {
-			key += fmt.Sprintf("%v\x00", g.raw[d])
-			g.keys[d] = key
+		g.keys = groupKeys(g.raw)
+		for d, key := range g.keys {
 			totals[d][key] += g.Size
 		}
 	}

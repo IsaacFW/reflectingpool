@@ -1,0 +1,403 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"golang.org/x/sys/unix"
+
+	"github.com/IsaacFW/reflectingpool/internal/appdb"
+	"github.com/IsaacFW/reflectingpool/internal/core"
+	"github.com/IsaacFW/reflectingpool/internal/index"
+	"github.com/IsaacFW/reflectingpool/internal/scan"
+	"github.com/IsaacFW/reflectingpool/internal/storage"
+)
+
+type countSink struct{ entries int64 }
+
+func (c *countSink) Entries(b []scan.Entry) error { c.entries += int64(len(b)); return nil }
+func (c *countSink) Counted([]int64) error        { return nil }
+
+// cmdBench measures how fast this machine walks and indexes a tree. It reads
+// metadata only and writes nothing outside a temporary directory.
+func cmdBench(args []string) error {
+	roots := args
+	if len(roots) == 0 {
+		roots = envList("RP_ROOTS")
+	}
+	if len(roots) == 0 {
+		return fmt.Errorf("give a directory to measure, or set RP_ROOTS")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	workers := scan.DefaultWorkers()
+	if v, err := strconv.Atoi(os.Getenv("RP_WORKERS")); err == nil && v > 0 {
+		workers = v
+	}
+	fmt.Printf("Reflecting Pool %s benchmark\nroots: %s\nwalkers: %d, cores: %d\n\n", version, strings.Join(roots, ", "), workers, runtime.NumCPU())
+
+	// Two walks with no index: the first shows the cache as it was found,
+	// the second shows the speed once the filesystem's metadata is in memory.
+	for _, label := range []string{"walk 1 (cache as found)", "walk 2 (cache warm)"} {
+		sink := &countSink{}
+		res, err := scan.Walk(ctx, scan.Options{Roots: roots, Workers: workers}, sink)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%-26s %10d entries in %8s  %9.0f entries/s  (%d errors)\n", label, sink.entries,
+			res.Elapsed.Round(time.Millisecond), float64(sink.entries)/res.Elapsed.Seconds(), res.Errors)
+	}
+
+	tmp, err := os.MkdirTemp(envOr("RP_DATA", os.TempDir()), "bench-*")
+	if err != nil {
+		tmp, err = os.MkdirTemp("", "bench-*")
+		if err != nil {
+			return err
+		}
+	}
+	defer os.RemoveAll(tmp)
+	db, err := appdb.Open(filepath.Join(tmp, "app.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	// Read-only, so that reconciling existing annotations cannot rewrite them.
+	app, err := core.New(ctx, core.Config{Roots: roots, DataDir: tmp, Workers: workers, ReadOnly: true}, db)
+	if err != nil {
+		return err
+	}
+	defer app.Close()
+
+	start := time.Now()
+	info, err := app.Scan(ctx)
+	if err != nil {
+		return err
+	}
+	total := time.Since(start)
+	walked := info.Finished.Sub(info.Started)
+	var indexBytes int64
+	if st, err := os.Stat(index.Latest(filepath.Join(tmp, "index"))); err == nil {
+		indexBytes = st.Size()
+	}
+	entries := info.Files + info.Dirs
+	fmt.Printf("%-26s %10d entries in %8s  %9.0f entries/s\n", "walk + write index", entries, walked.Round(time.Millisecond), float64(entries)/walked.Seconds())
+	fmt.Printf("%-26s %21s %8s\n", "build lookup indexes", "", (total - walked).Round(time.Millisecond))
+	fmt.Printf("%-26s %21s %8s\n\n", "full scan, end to end", "", total.Round(time.Millisecond))
+	fmt.Printf("files %d, folders %d, hardlinked files %d\n", info.Files, info.Dirs, info.Hardlinked)
+	fmt.Printf("apparent size %s, on disk %s\n", human(info.Size), human(info.Disk))
+	if entries > 0 {
+		fmt.Printf("index file %s (%d bytes per entry)\n", human(indexBytes), indexBytes/entries)
+	}
+	fmt.Printf("peak memory %s\n\n", peakMemory())
+
+	fmt.Printf("query timings %31s %10s\n", "first call", "repeat")
+	return app.View(func(ix *index.Index) error {
+		// The first call pays for anything cached; the repeat (best of 3) is
+		// what a user feels while paging or working through a review.
+		timeIt := func(label string, fn func() error) error {
+			var first, best time.Duration
+			for i := range 4 {
+				t := time.Now()
+				if err := fn(); err != nil {
+					return fmt.Errorf("%s: %w", label, err)
+				}
+				switch d := time.Since(t); {
+				case i == 0:
+					first = d
+				case i == 1 || d < best:
+					best = d
+				}
+			}
+			fmt.Printf("  %-42s %10s %10s\n", label, first.Round(10*time.Microsecond), best.Round(10*time.Microsecond))
+			return nil
+		}
+		rootRows, _, err := ix.Children(ctx, 0, index.Sort{}, 0, 0)
+		if err != nil || len(rootRows) == 0 {
+			return err
+		}
+		biggest, err := ix.Find(ctx, index.Filter{Kind: "dir"}, index.Sort{Key: "files", Desc: true}, 1, 0)
+		if err != nil || len(biggest) == 0 {
+			return err
+		}
+		steps := []struct {
+			label string
+			fn    func() error
+		}{
+			{"children of the first root, by size", func() error {
+				_, _, err := ix.Children(ctx, rootRows[0].ID, index.Sort{Key: "size", Desc: true}, 500, 0)
+				return err
+			}},
+			{fmt.Sprintf("children of the fullest folder (%d files)", biggest[0].Files), func() error {
+				_, _, err := ix.Children(ctx, biggest[0].ID, index.Sort{Key: "size", Desc: true}, 500, 0)
+				return err
+			}},
+			{"100 largest files, with paths", func() error {
+				rows, err := ix.Find(ctx, index.Filter{Kind: "file"}, index.Sort{Key: "size", Desc: true}, 100, 0)
+				if err != nil {
+					return err
+				}
+				return ix.FillPaths(ctx, rows)
+			}},
+			{"100 largest folders", func() error {
+				_, err := ix.Find(ctx, index.Filter{Kind: "dir"}, index.Sort{Key: "size", Desc: true}, 100, 0)
+				return err
+			}},
+			{"name search across everything", func() error {
+				_, err := ix.Find(ctx, index.Filter{Name: "report"}, index.Sort{Key: "size", Desc: true}, 100, 0)
+				return err
+			}},
+			{"files over 1 GiB not modified in 2 years", func() error {
+				_, err := ix.Find(ctx, index.Filter{Kind: "file", MinSize: 1 << 30, ModifiedBefore: time.Now().AddDate(-2, 0, 0).Unix()}, index.Sort{Key: "size", Desc: true}, 100, 0)
+				return err
+			}},
+			{"review queue: share, type, largest first", func() error {
+				_, err := ix.Queue(ctx, index.QueueSpec{Filter: index.Filter{Kind: "file"}, Groups: []string{"share", "type"}, Order: index.Sort{Key: "size", Desc: true}})
+				return err
+			}},
+			{"review queue: folders by share", func() error {
+				_, err := ix.Queue(ctx, index.QueueSpec{Filter: index.Filter{Kind: "dir"}, Groups: []string{"share"}, Order: index.Sort{Key: "size", Desc: true}})
+				return err
+			}},
+		}
+		for _, s := range steps {
+			if err := timeIt(s.label, s.fn); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func peakMemory() string {
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return "unknown"
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if rest, ok := strings.CutPrefix(line, "VmHWM:"); ok {
+			if kb, err := strconv.ParseInt(strings.TrimSuffix(strings.TrimSpace(rest), " kB"), 10, 64); err == nil {
+				return human(kb * 1024)
+			}
+		}
+	}
+	return "unknown"
+}
+
+const capSysAdmin = 21
+
+var versionRE = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
+
+// cmdDoctor reports what the container can see and do, so that problems with
+// mappings, permissions or the ZFS passthrough are found before they matter.
+// It only reads.
+func cmdDoctor() error {
+	ctx := context.Background()
+	problems := 0
+	ok := func(format string, args ...any) { fmt.Printf("  ok    "+format+"\n", args...) }
+	note := func(format string, args ...any) { fmt.Printf("  note  "+format+"\n", args...) }
+	bad := func(format string, args ...any) {
+		problems++
+		fmt.Printf("  FIX   "+format+"\n", args...)
+	}
+
+	fmt.Printf("Reflecting Pool %s doctor\n\nProcess\n", version)
+	var uts unix.Utsname
+	if unix.Uname(&uts) == nil {
+		ok("kernel %s", unix.ByteSliceToString(uts.Release[:]))
+	}
+	if os.Geteuid() == 0 {
+		ok("running as root inside the container, so every file can be read")
+	} else {
+		note("running as uid %d: files this user cannot read will be missing from scans", os.Geteuid())
+	}
+	if caps, found := effectiveCaps(); found {
+		if caps&(1<<capSysAdmin) != 0 {
+			bad("the container has CAP_SYS_ADMIN (is \"Privileged\" on?). Turn it off: with it, a fault in this program could destroy datasets and snapshots.")
+		} else {
+			ok("not privileged (no CAP_SYS_ADMIN): ZFS will refuse destructive commands from here")
+		}
+	}
+
+	fmt.Println("\nScan roots")
+	roots := envList("RP_ROOTS")
+	if len(roots) == 0 {
+		bad("RP_ROOTS is not set")
+	}
+	var table *storage.Table
+	if mounts, err := storage.Mounts(); err != nil {
+		bad("cannot read the mount table: %v", err)
+	} else {
+		table = storage.NewTable(mounts)
+	}
+	for _, root := range roots {
+		st, err := os.Stat(root)
+		if err != nil || !st.IsDir() {
+			bad("%s is not a directory in this container; map the pool to this path", root)
+			continue
+		}
+		var stx unix.Statx_t
+		if unix.Statx(unix.AT_FDCWD, root, 0, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stx) == nil && stx.Mask&unix.STATX_BTIME == 0 {
+			note("%s does not report creation times; annotations will follow renames by inode number alone", root)
+		}
+		if table == nil {
+			continue
+		}
+		m, found := table.Containing(root)
+		if !found {
+			note("%s: no mount found", root)
+			continue
+		}
+		children := table.Under(root)
+		ok("%s is %s %q with %d filesystem(s) at or beneath it", root, m.FSType, m.Source, len(children))
+		if m.MountPoint != root {
+			note("%s is a folder inside %s rather than a mount of its own; scan progress cannot be shown as a percentage", root, m.MountPoint)
+		}
+		if u, err := storage.StatUsage(root); err == nil {
+			ok("%s: %s used, %s free, %d files and folders by the filesystem's count", root, human(u.Used), human(u.Avail), u.Objects)
+		}
+		if hasOption(m.Options, "ro") {
+			note("%s is mounted read-only: browsing works, annotations and quarantine do not", root)
+		} else if unix.Access(root, unix.W_OK) != nil {
+			note("%s is not writable by this process: annotations cannot be saved", root)
+		} else {
+			ok("%s is writable, so annotations can be saved", root)
+		}
+		if !strings.Contains(m.Propagation, "master:") && !strings.Contains(m.Propagation, "shared:") {
+			note("%s does not receive new mounts from the host. Datasets created or mounted after the container starts stay invisible until it restarts; set the path's access mode to \"Read/Write - Slave\" to fix that.", root)
+		} else {
+			ok("%s receives new mounts from the host (%s)", root, m.Propagation)
+		}
+		noatime := 0
+		for _, c := range children {
+			if hasOption(c.Options, "noatime") {
+				noatime++
+			}
+		}
+		if noatime == len(children) {
+			note("read times are off (noatime) on every filesystem here: staleness can only use modified and creation times")
+		} else if noatime > 0 {
+			note("read times are off (noatime) on %d of %d filesystems here", noatime, len(children))
+		}
+	}
+
+	fmt.Println("\nZFS")
+	kmod := ""
+	if data, err := os.ReadFile("/sys/module/zfs/version"); err == nil {
+		kmod = strings.TrimSpace(string(data))
+		ok("host ZFS kernel module %s", kmod)
+	} else {
+		note("no ZFS kernel module is visible; this host does not appear to use ZFS")
+	}
+	_, devErr := os.Stat("/dev/zfs")
+	bin, binErr := exec.LookPath("zfs")
+	switch {
+	case devErr != nil:
+		note("/dev/zfs is not passed in: snapshot sizes will be unavailable unless the host script is set up")
+	case binErr != nil:
+		bad("/dev/zfs is present but the zfs command is missing from this image")
+	default:
+		var out bytes.Buffer
+		cmd := exec.CommandContext(ctx, bin, "version")
+		cmd.Stdout = &out
+		cmd.Run()
+		tools := firstMatch(out.String())
+		ok("zfs tools in this image: %s", strings.Join(strings.Fields(out.String()), " "))
+		if a, b := versionRE.FindStringSubmatch(tools), versionRE.FindStringSubmatch(kmod); a != nil && b != nil && (a[1] != b[1] || a[2] != b[2]) {
+			note("the tools (%s) and the host module (%s) are different release series; if the listing below fails, use an image built for %s.%s", a[0], b[0], b[1], b[2])
+		}
+	}
+	listing := storage.ListZFS(ctx, envOr("RP_ZFS_LIST_FILE", filepath.Join(envOr("RP_DATA", "/data"), "zfs-list.txt")))
+	filesystems, snapshots := 0, 0
+	var snapBytes int64
+	for _, d := range listing.Datasets {
+		if d.Type == "snapshot" {
+			snapshots++
+		} else {
+			filesystems++
+			if d.UsedSnap > 0 {
+				snapBytes += d.UsedSnap
+			}
+		}
+	}
+	switch listing.Origin {
+	case "zfs":
+		ok("zfs list works: %d datasets, %d snapshots holding %s", filesystems, snapshots, human(snapBytes))
+	case "file":
+		age := time.Since(listing.AsOf).Round(time.Minute)
+		ok("read the host script's output (%s old): %d datasets, %d snapshots holding %s", age, filesystems, snapshots, human(snapBytes))
+		if age > 6*time.Hour {
+			note("that file is %s old; check the host script is still scheduled", age)
+		}
+	default:
+		note("no ZFS accounting available")
+	}
+	if listing.Err != "" {
+		bad("%s", listing.Err)
+	}
+
+	fmt.Println("\nData directory")
+	data := envOr("RP_DATA", "/data")
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		bad("%s cannot be created: %v", data, err)
+	} else if f, err := os.CreateTemp(data, ".doctor-*"); err != nil {
+		bad("%s is not writable: %v", data, err)
+	} else {
+		f.Close()
+		os.Remove(f.Name())
+		if u, err := storage.StatUsage(data); err == nil {
+			ok("%s is writable, %s free", data, human(u.Avail))
+		}
+		if table != nil {
+			if m, found := table.Containing(data); found && (m.FSType == "overlay" || m.FSType == "tmpfs") {
+				bad("%s is inside the container, not a mapped folder: the index, the admin account and the TLS key will be lost when the container is recreated", data)
+			}
+		}
+	}
+
+	if problems > 0 {
+		fmt.Printf("\n%d item(s) marked FIX need attention.\n", problems)
+		os.Exit(1)
+	}
+	fmt.Println("\nNothing needs fixing.")
+	return nil
+}
+
+func firstMatch(s string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
+	return line
+}
+
+func hasOption(options, want string) bool {
+	for _, o := range strings.Split(options, ",") {
+		if o == want {
+			return true
+		}
+	}
+	return false
+}
+
+func effectiveCaps() (uint64, bool) {
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if rest, ok := strings.CutPrefix(line, "CapEff:"); ok {
+			v, err := strconv.ParseUint(strings.TrimSpace(rest), 16, 64)
+			return v, err == nil
+		}
+	}
+	return 0, false
+}
