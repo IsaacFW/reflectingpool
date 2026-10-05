@@ -104,6 +104,8 @@ Working through many items to annotate or rename them has to be fast and easy. T
 - **Generated previews**: video the browser cannot play gets a poster frame, and RAW and HEIC photos get a thumbnail, in the first release.
 - **Review order**: the user builds the order from a list of sort keys, such as share, file type, size, age and folder. Example: share, then file type, largest first. The user works through one share, taking each file type in turn with its largest files first. When every item of that type is filled in or skipped, the queue moves to the next file type, and after the last type to the next share.
 - **Progress**: filled-in and skipped items are remembered in `.reflection/`, so a review can be stopped and resumed. The screen shows how many items remain in the current group.
+- **Skips** are kept in their own list, `skipped.jsonl`, one path per line, apart from the annotations. Skipping the rest of a group can add tens of thousands at once, and a skip records nothing worth following: a skipped item that is renamed or moved returns to review.
+- **A described folder** covers what is inside it only when it has a note, a prefix or a display name. A skipped folder does not, and neither does a note on a share.
 
 ## ZFS handling
 
@@ -127,6 +129,7 @@ For the reference deployment, to be confirmed by benchmark:
 - Full scan with a warm cache: under 2 minutes.
 - Full scan with a cold cache: under 30 minutes.
 - Any browsing query: under 100 ms.
+- One step of a review (record an item, fetch the next): a few milliseconds, however many items have been reviewed or skipped.
 - Memory during a scan: under 500 MB.
 
 ## Build order
@@ -147,6 +150,11 @@ For the reference deployment, to be confirmed by benchmark:
   - the scan's on-disk total matches ZFS's own figure for the dataset, and its entry count matches ZFS's object count to within 0.1%;
   - a whole pool of about 1.1 million entries across 13 datasets scanned in 1 to 4 minutes with 357 MiB peak memory, measured while a large transfer was writing to the pool, so an idle pool should be no slower. Every measured query is within its target except name search at 130 to 145 ms ([issue #7](https://github.com/IsaacFW/reflectingpool/issues/7)).
 
+- Measured on the development machine on 2026-10-05, on a generated tree of 1 million files in 137,000 folders (not yet on the reference server):
+  - one step of a review takes about 1 ms in every queue shape tried, including after 274,000 items had been skipped at once and with a described folder left out;
+  - the first call of a new queue takes 0.1 to 0.9 s, and changing to a group that no index leads to about 0.15 s;
+  - skipping 274,000 items at once takes about 2.3 s; 200,000 skips add about 0.8 s to a scan and to start-up.
+
 ## Out of scope
 
 - Unraid plugin packaging.
@@ -161,4 +169,4 @@ For the reference deployment, to be confirmed by benchmark:
 ## Open items
 
 - Presentation and frontend stack: decided at the design evaluation.
-- Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, and saving annotations.
+- Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, saving annotations, and the review timings that `bench` now reports.

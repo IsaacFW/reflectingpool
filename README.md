@@ -130,7 +130,7 @@ Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's im
 
 ## What it writes
 
-- **In each share:** a `.reflection/` folder, created the first time something in that share is annotated. `annotations.jsonl` holds one line per annotated item and is the only copy of that information; `INDEX.md` is a readable summary regenerated from it. Both take the share's owner and permissions.
+- **In each share:** a `.reflection/` folder, created the first time something in that share is annotated or skipped. `annotations.jsonl` holds one line per annotated item and is the only copy of that information; `INDEX.md` is a readable summary regenerated from it. `skipped.jsonl` lists the items passed over in a review, one path per line; a skipped item that is renamed or moved returns to review, and deleting the file returns them all at the next scan. All of it takes the share's owner and permissions.
 - **In the data directory:** the scan index (rebuilt by every scan; the last three are kept), the app database and the TLS key. All of it can be deleted without losing annotations.
 - **Nowhere else.** A scan reads metadata only and never opens a file. File contents are read in two cases: a 128 KiB fingerprint when you annotate a file, and when you preview one.
 
@@ -162,13 +162,16 @@ Everything but the first three routes needs the session cookie; anything but `GE
 | `GET /api/entries/lookup?path=` | The entry at a path |
 | `GET /api/storage` | Datasets with usage and, where available, snapshot accounting |
 | `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown |
-| `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix |
+| `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix, or everything `under=` a folder; `sort=` size, disk, name, modified, created, age or files |
 | `GET /api/entries/{id}` | One item with its annotation and hardlinks |
-| `PUT`, `DELETE /api/entries/{id}/annotation` | Record or remove an annotation; `{"skipped": true}` passes an item over |
+| `PUT`, `DELETE /api/entries/{id}/annotation` | Record or remove an annotation. Saving with every field empty skips the item; deleting returns it to review |
 | `GET /api/entries/{id}/content` | File contents for the preview pane, with range requests |
 | `GET /api/shares`, `GET /api/shares/{id}/annotations` | Annotation coverage per share; everything recorded in one |
 | `GET`, `PUT /api/prefixes` | The prefix list |
 | `POST /api/queue` | The next items of a review, grouped and ordered by the keys you give |
+| `POST /api/queue/skip` | Skip everything left in one group of a review |
+
+### Review queues
 
 A review that goes share by share, then file type, largest first:
 
@@ -176,7 +179,22 @@ A review that goes share by share, then file type, largest first:
 {"filter": {"kind": "file"}, "groups": ["share", "type"], "order": "size"}
 ```
 
-Groups are served largest first and one at a time; an item leaves the queue when it is annotated or skipped.
+Send the same request after each item is annotated or skipped: the item drops out and the answer holds the next ones. A group is served until nothing in it is left, then the next group starts.
+
+| Field | Meaning |
+|---|---|
+| `filter` | Which items are candidates: `kind`, `shares`, `types`, `exts`, `min_size`, `max_size`, `modified_before`, `name`, and `under`, the ID of a folder whose contents (at any depth) are the only candidates |
+| `groups` | Any of `share`, `type`, `ext`, `folder`, `age`, outermost first. Groups go in order of the bytes they hold, largest first. Age groups go oldest first: over 5 years, 2 to 5 years, 1 to 2 years, 6 to 12 months, under 6 months |
+| `order` | Inside a group: `size` (largest first), `age`, `modified` or `created` (oldest first), `name`. `"desc": true` or `false` overrides the direction |
+| `exclude_covered` | Count an item as reviewed when a folder above it has been described |
+| `limit`, `offset` | How many items to return (20, at most 200), and how many unreviewed items to pass over first |
+
+The answer gives `items`; `groups`, the groups still to do, starting with the current one; `group_position` and `group_total` ("group 3 of 31", finished groups included); `remaining`; and `total` and `total_size` for the whole queue.
+
+- **Age** is counted from the later of an item's creation and last modification, up to the time of the scan. A file copied to the pool last week is a week old.
+- **A described folder** is one with a note, a prefix or a display name. Skipping a folder says nothing about its contents, and a note on a share does not cover the share.
+- **Only items inside a share** are offered. The scan roots, anything loose in them and the `.reflection` folders cannot be annotated.
+- **To skip a group**, send the queue to `POST /api/queue/skip` with one more field, `group`: the `value` of each of the group's `values`, in order. The answer is `{"skipped": n}`.
 
 ## Development
 

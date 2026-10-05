@@ -60,6 +60,12 @@ type App struct {
 
 	ixMu sync.RWMutex
 	ix   *index.Index
+	// writeMu is held for reading by every change to annotations, and for
+	// writing while the annotations are matched to a new index and that
+	// index is put into use. A change made in between would be recorded
+	// against the old index only, and the new one would show the item as
+	// unreviewed until the next scan. It is taken before ixMu.
+	writeMu sync.RWMutex
 
 	scanMu    sync.Mutex
 	closed    bool
@@ -226,10 +232,18 @@ func (a *App) adoptLatest() {
 		ix.Close()
 		return
 	}
+	// The process that built this index matched the annotations to it as
+	// they were at that moment. Whatever has been written here since is
+	// missing from it, so they are matched again.
+	a.writeMu.Lock()
+	for _, w := range a.reconcile(context.WithoutCancel(a.bg), ix) {
+		log.Printf("warning: %s", w)
+	}
 	a.ixMu.Lock()
 	old := a.ix
 	a.ix = ix
 	a.ixMu.Unlock()
+	a.writeMu.Unlock()
 	if old != nil {
 		old.Close()
 	}
@@ -475,12 +489,13 @@ func (a *App) scanOnce(ctx context.Context, prog *scan.Progress, intensity scan.
 	// The index is already published, so the annotations must be matched to
 	// it even if the server is shutting down: an index left without them
 	// would show everything as unannotated after the next start.
+	a.writeMu.Lock()
 	warnings := a.reconcile(context.WithoutCancel(ctx), ix)
-
 	a.ixMu.Lock()
 	old := a.ix
 	a.ix = ix
 	a.ixMu.Unlock()
+	a.writeMu.Unlock()
 	if old != nil {
 		old.Close()
 	}

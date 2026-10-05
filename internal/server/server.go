@@ -61,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 		"DELETE /api/entries/{id}/annotation": s.deleteAnnotation,
 		"GET /api/entries/{id}/content":       s.content,
 		"POST /api/queue":                     s.queue,
+		"POST /api/queue/skip":                s.queueSkip,
 	}
 	// These work the same whichever index is in use, and are how a client
 	// finds its feet again after a scan.

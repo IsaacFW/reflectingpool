@@ -417,6 +417,69 @@ func TestErrorCodesTotalsAndBlankSaves(t *testing.T) {
 	h.expect(200, h.request("PUT", "/api/entries/"+gone+"/annotation", map[string]any{}, nil))
 }
 
+func TestQueueToolsOverHTTP(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	h.signIn()
+	media := h.id("media")
+
+	// Everything under one folder, for stepping from the space view into a
+	// listing or a review of what is in it.
+	r := h.expect(200, h.request("GET", "/api/entries?kind=file&sort=age&under="+media, nil, nil))
+	if r.body["total"] != float64(3) || r.body["total_size"] != float64(6000) {
+		t.Errorf("under media = %s", r.raw)
+	}
+	h.expect(200, h.request("GET", "/api/entries?sort=created&desc=1", nil, nil))
+
+	spec := map[string]any{
+		"filter": map[string]any{"kind": "file"}, "groups": []string{"share", "age"},
+		"order": "age", "exclude_covered": true, "limit": 1, "offset": 1,
+	}
+	r = h.expect(200, h.request("POST", "/api/queue", spec, nil))
+	group := r.body["groups"].([]any)[0].(map[string]any)
+	values := group["values"].([]any)
+	share, age := values[0].(map[string]any), values[1].(map[string]any)
+	if r.body["total"] != float64(6) || r.body["group_total"] != float64(2) || r.body["group_position"] != float64(1) ||
+		r.body["remaining"] != float64(6) || r.body["total_size"] == nil || len(r.body["items"].([]any)) != 1 {
+		t.Fatalf("queue = %s", r.raw)
+	}
+	if share["label"] != "media" || jsonNum(share["value"]) != media || age["value"] != "under-6m" || age["label"] != "Under 6 months" {
+		t.Errorf("group values = %v", values)
+	}
+
+	// Skip the rest of the group, named by the values the queue gave for it.
+	spec["group"] = []any{share["value"], age["value"]}
+	h.expect(400, h.request("POST", "/api/queue", spec, nil)) // only the skip takes a group
+	h.expect(400, h.request("POST", "/api/queue/skip", spec, map[string]string{"X-RP-Index": ""}))
+	if r := h.request("POST", "/api/queue/skip", spec, map[string]string{"X-RP-Index": "scan-of-another-day"}); r.status != 409 || r.body["code"] != "index_changed" {
+		t.Errorf("skip against another index: %d %s", r.status, r.raw)
+	}
+	r = h.expect(200, h.request("POST", "/api/queue/skip", spec, nil))
+	if r.body["skipped"] != float64(3) {
+		t.Errorf("skip = %s", r.raw)
+	}
+	list, err := os.ReadFile(filepath.Join(h.root, "media/.reflection/skipped.jsonl"))
+	if err != nil || strings.Count(string(list), "\n") != 3 {
+		t.Errorf("skipped list in the share: %q, %v", list, err)
+	}
+	delete(spec, "group")
+	spec["offset"] = 0
+	r = h.expect(200, h.request("POST", "/api/queue", spec, nil))
+	if r.body["remaining"] != float64(3) || r.body["group_position"] != float64(2) || r.body["group_count"] != float64(1) {
+		t.Errorf("queue after the skip = %s", r.raw)
+	}
+	spec["group"] = []any{"media", "under-6m"}
+	if r := h.request("POST", "/api/queue/skip", spec, nil); r.status != 400 || r.body["code"] != "bad_request" {
+		t.Errorf("a group named by its label: %d %s", r.status, r.raw)
+	}
+
+	ro := newHarness(t, Options{}, true)
+	ro.signIn()
+	spec["group"] = []any{json.Number(ro.id("media")), "under-6m"}
+	if r := ro.request("POST", "/api/queue/skip", spec, nil); r.status != 403 || r.body["code"] != "read_only" {
+		t.Errorf("read-only skip: %d %s", r.status, r.raw)
+	}
+}
+
 func TestSettingsAndSchedule(t *testing.T) {
 	h := newHarness(t, Options{}, false)
 	h.signIn()

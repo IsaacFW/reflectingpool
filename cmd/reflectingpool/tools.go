@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -184,13 +185,164 @@ func cmdBench(args []string) error {
 				_, err := ix.Queue(ctx, index.QueueSpec{Filter: index.Filter{Kind: "dir"}, Groups: []string{"share"}, Order: index.Sort{Key: "size", Desc: true}})
 				return err
 			}},
+			{"review queue: share, age, oldest first", func() error {
+				_, err := ix.Queue(ctx, index.QueueSpec{Filter: index.Filter{Kind: "file"}, Groups: []string{"share", "age"}, Order: index.Sort{Key: "age"}})
+				return err
+			}},
+			{"review queue: by extension", func() error {
+				_, err := ix.Queue(ctx, index.QueueSpec{Filter: index.Filter{Kind: "file"}, Groups: []string{"ext"}, Order: index.Sort{Key: "size", Desc: true}})
+				return err
+			}},
 		}
 		for _, s := range steps {
 			if err := timeIt(s.label, s.fn); err != nil {
 				return err
 			}
 		}
+		return benchReview(ctx, ix, timeIt)
+	})
+}
+
+// benchReview measures a review in progress: what one step costs, and whether
+// it still costs the same once a folder has been described and tens of
+// thousands of items have been skipped. It marks items in the temporary index
+// only; nothing is written to the shares.
+func benchReview(ctx context.Context, ix *index.Index, timeIt func(string, func() error) error) error {
+	fmt.Printf("\nreview in progress (marks the temporary index only; the shares are not written to)\n")
+	once := func(label string, fn func() error) error {
+		t := time.Now()
+		if err := fn(); err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+		fmt.Printf("  %-42s %10s\n", label, time.Since(t).Round(10*time.Microsecond))
 		return nil
+	}
+	// One step of a review: record the item, fetch the next ones.
+	steps := func(label string, spec index.QueueSpec) error {
+		const n = 200
+		done := 0
+		t := time.Now()
+		for ; done < n; done++ {
+			q, err := ix.Queue(ctx, spec)
+			if err != nil {
+				return fmt.Errorf("%s: %w", label, err)
+			}
+			if len(q.Items) == 0 {
+				break
+			}
+			if err := ix.SetAnnot(ctx, index.Annot{Entry: q.Items[0].ID, State: index.StateSkipped}); err != nil {
+				return fmt.Errorf("%s: %w", label, err)
+			}
+		}
+		if done == 0 {
+			return nil
+		}
+		fmt.Printf("  %-42s %10s  (mean of %d steps)\n", label, (time.Since(t) / time.Duration(done)).Round(10*time.Microsecond), done)
+		return nil
+	}
+	queue := index.QueueSpec{Filter: index.Filter{Kind: "file"}, Groups: []string{"share", "type"}, Order: index.Sort{Key: "size", Desc: true}}
+	covered := queue
+	covered.ExcludeCovered = true
+	byAge := index.QueueSpec{Filter: index.Filter{Kind: "file"}, Groups: []string{"share", "age"}, Order: index.Sort{Key: "age"}}
+	if err := steps("one step: share, type, largest first", queue); err != nil {
+		return err
+	}
+	if err := steps("one step: share, age, oldest first", byAge); err != nil {
+		return err
+	}
+
+	// The largest folder that can be described: inside a share, not a share.
+	folders, err := ix.Find(ctx, index.Filter{Kind: "dir"}, index.Sort{Key: "files", Desc: true}, 200, 0)
+	if err != nil {
+		return err
+	}
+	var folder *index.Row
+	for i := range folders {
+		if f := &folders[i]; f.Share != 0 && f.Share != f.ID {
+			folder = f
+			break
+		}
+	}
+	if folder != nil {
+		under := index.QueueSpec{Filter: index.Filter{Kind: "file", Under: folder.ID}, Groups: []string{"type"}, Order: index.Sort{Key: "size", Desc: true}}
+		if err := timeIt(fmt.Sprintf("queue inside one folder (%d files)", folder.Files), func() error {
+			_, err := ix.Queue(ctx, under)
+			return err
+		}); err != nil {
+			return err
+		}
+		if err := steps("one step inside that folder", under); err != nil {
+			return err
+		}
+		if _, err := ix.Queue(ctx, covered); err != nil { // so that describing the folder has a queue to update
+			return err
+		}
+		if err := once(fmt.Sprintf("describe that folder (%d folders in it)", folder.Dirs), func() error {
+			return ix.SetAnnot(ctx, index.Annot{Entry: folder.ID, State: index.StateNote})
+		}); err != nil {
+			return err
+		}
+		if err := timeIt("queue leaving out described folders", func() error {
+			_, err := ix.Queue(ctx, covered)
+			return err
+		}); err != nil {
+			return err
+		}
+		if err := steps("one step leaving out described folders", covered); err != nil {
+			return err
+		}
+	}
+
+	// Skip the rest of the current group, as the bulk action does.
+	q, err := ix.Queue(ctx, queue)
+	if err != nil || len(q.Groups) == 0 {
+		return err
+	}
+	var group []any
+	for _, v := range q.Groups[0].Values {
+		group = append(group, v.Value)
+	}
+	if err := once(fmt.Sprintf("skip the rest of a group (%d items)", q.Groups[0].Remaining), func() error {
+		pending, err := ix.PendingInGroup(ctx, queue, group)
+		if err != nil {
+			return err
+		}
+		for ids := range slices.Chunk(pending, 10_000) {
+			rows, err := ix.Rows(ctx, ids)
+			if err != nil {
+				return err
+			}
+			if err := ix.FillPaths(ctx, rows); err != nil { // the real thing needs each item's path
+				return err
+			}
+			if _, err := ix.MarkSkipped(ctx, queue, group, ids); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	if err := steps("one step after that skip", queue); err != nil {
+		return err
+	}
+	// The hardest thing to fetch: the first items of a small group that no
+	// index leads to. A queue pays this once each time it changes group.
+	byExt := index.QueueSpec{Filter: index.Filter{Kind: "file"}, Groups: []string{"ext"}, Order: index.Sort{Key: "size", Desc: true}}
+	if q, err = ix.Queue(ctx, byExt); err != nil {
+		return err
+	}
+	byExt.Offset = int(q.Remaining) - 1
+	if err := once("change to the smallest group, by extension", func() error {
+		_, err := ix.Queue(ctx, byExt)
+		return err
+	}); err != nil {
+		return err
+	}
+	// Another queue over the same items has to count the skips once.
+	return timeIt("another queue after that skip", func() error {
+		_, err := ix.Queue(ctx, byAge)
+		return err
 	})
 }
 

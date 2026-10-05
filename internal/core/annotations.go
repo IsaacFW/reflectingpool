@@ -151,6 +151,9 @@ func (a *App) Annotation(ctx context.Context, id int64) (an meta.Annotation, fou
 			return err
 		}
 		an, found, err = a.store(t.sharePath).Get(t.rel)
+		if err == nil && !found && t.row.State&index.StateSkipped != 0 {
+			an, found = meta.Annotation{Path: t.rel, Kind: t.row.Kind, Skipped: true}, true
+		}
 		return err
 	})
 	return an, found, err
@@ -164,39 +167,48 @@ func (a *App) PutAnnotation(ctx context.Context, id int64, in AnnotationInput) (
 	if err := a.validate(&in); err != nil {
 		return meta.Annotation{}, err
 	}
-	// Saving a form with nothing in it is how an item is passed over. Stored
-	// any other way it would count as reviewed while recording nothing.
-	onlySkip := in.Note == "" && in.DisplayName == "" && len(in.Prefixes) == 0 && in.Owner == "" && in.ReviewAfter == ""
-	if onlySkip {
-		in.Skipped = true
-	}
+	a.writeMu.RLock()
+	defer a.writeMu.RUnlock()
+	// Saving a form with nothing in it is how an item is passed over.
+	blank := in.Note == "" && in.DisplayName == "" && len(in.Prefixes) == 0 && in.Owner == "" && in.ReviewAfter == ""
 	var an meta.Annotation
 	err := a.viewAt(ctx, func(ix *index.Index) error {
 		t, err := a.target(ctx, ix, id)
 		if err != nil {
 			return err
 		}
-		ident, err := a.liveIdentity(ctx, ix, t)
-		if errors.Is(err, ErrGone) && onlySkip {
-			// A skip needs nothing from the item itself. Without this, an
-			// item that has left the disk could not be passed over and
-			// would sit at the head of a review queue until the next scan.
-			byDev, _, derr := datasetNames(ctx, ix)
-			if derr != nil {
-				return derr
+		store := a.store(t.sharePath)
+		now := time.Now().UTC().Truncate(time.Second)
+		if blank {
+			// A skip records nothing about the item, so nothing is read
+			// from it. An item that has left the disk can still be passed
+			// over, and does not sit at the head of a queue until the next
+			// scan.
+			an = meta.Annotation{Path: t.rel, Kind: t.row.Kind, Skipped: true, Updated: now}
+			if err := store.Delete(t.rel); err != nil { // whatever was recorded before is withdrawn
+				return err
 			}
-			ident, err = meta.Identity{Dataset: byDev[t.row.Dev], Ino: t.row.Ino, Btime: t.row.Btime, BtimeNs: t.row.BtimeNsec}, nil
+			if t.row.State != index.StateSkipped {
+				if err := store.AddSkips([]string{t.rel}); err != nil {
+					return err
+				}
+			}
+			return ix.SetAnnot(ctx, index.Annot{Entry: id, State: index.StateSkipped})
 		}
+		ident, err := a.liveIdentity(ctx, ix, t)
 		if err != nil {
 			return err
 		}
 		an = meta.Annotation{
 			Path: t.rel, Kind: t.row.Kind,
 			Note: in.Note, DisplayName: in.DisplayName, Prefixes: in.Prefixes,
-			Owner: in.Owner, ReviewAfter: in.ReviewAfter, Skipped: in.Skipped,
-			Identity: ident, Updated: time.Now().UTC().Truncate(time.Second),
+			Owner: in.Owner, ReviewAfter: in.ReviewAfter,
+			Identity: ident, Updated: now,
 		}
-		if err := a.store(t.sharePath).Put(an); err != nil {
+		// If the item was skipped before, its line in the skipped list is
+		// left behind. It does no harm: an annotation outranks a skip, and
+		// the next scan tidies the list.
+		if err := store.Put(an); err != nil {
 			return err
 		}
 		return ix.SetAnnot(ctx, index.Annot{Entry: id, State: stateOf(an), Prefixes: an.Prefixes})
@@ -204,17 +216,82 @@ func (a *App) PutAnnotation(ctx context.Context, id int64, in AnnotationInput) (
 	return an, err
 }
 
+// skipChunk bounds the memory a bulk skip uses, however large the group. It
+// is a variable so that a test can make a small group take several rounds.
+var skipChunk = 10_000
+
+// SkipGroup skips every unreviewed item left in one group of a review queue
+// and reports how many there were. group names the group by one value for
+// each of the queue's group keys.
+func (a *App) SkipGroup(ctx context.Context, spec index.QueueSpec, group []any) (int64, error) {
+	if a.cfg.ReadOnly {
+		return 0, ErrReadOnly
+	}
+	a.writeMu.RLock()
+	defer a.writeMu.RUnlock()
+	var total int64
+	err := a.viewAt(ctx, func(ix *index.Index) error {
+		pending, err := ix.PendingInGroup(ctx, spec, group)
+		if err != nil {
+			return err
+		}
+		sharePaths := make(map[int64]string)
+		for ids := range slices.Chunk(pending, skipChunk) {
+			rows, err := ix.Rows(ctx, ids)
+			if err != nil {
+				return err
+			}
+			if err := ix.FillPaths(ctx, rows); err != nil {
+				return err
+			}
+			byShare := make(map[string][]string)
+			for _, row := range rows {
+				sharePath, ok := sharePaths[row.Share]
+				if !ok {
+					if sharePath, err = ix.EntryPath(ctx, row.Share); err != nil {
+						return err
+					}
+					sharePaths[row.Share] = sharePath
+				}
+				byShare[sharePath] = append(byShare[sharePath], relTo(sharePath, row.Path))
+			}
+			// The list in the share is written first: it is the record, and
+			// the index only a cache of it.
+			for sharePath, rels := range byShare {
+				if err := a.store(sharePath).AddSkips(rels); err != nil {
+					return err
+				}
+			}
+			added, err := ix.MarkSkipped(ctx, spec, group, ids)
+			if err != nil {
+				return err
+			}
+			total += added
+		}
+		return nil
+	})
+	return total, err
+}
+
 // DeleteAnnotation removes an item's annotation, returning it to review queues.
 func (a *App) DeleteAnnotation(ctx context.Context, id int64) error {
 	if a.cfg.ReadOnly {
 		return ErrReadOnly
 	}
+	a.writeMu.RLock()
+	defer a.writeMu.RUnlock()
 	return a.viewAt(ctx, func(ix *index.Index) error {
 		t, err := a.target(ctx, ix, id)
 		if err != nil {
 			return err
 		}
-		if err := a.store(t.sharePath).Delete(t.rel); err != nil {
+		store := a.store(t.sharePath)
+		if err := store.Delete(t.rel); err != nil {
+			return err
+		}
+		// A skip of the same item goes too, including one left behind when
+		// the item was annotated later, or the next scan would bring it back.
+		if err := store.RemoveSkip(t.rel); err != nil {
 			return err
 		}
 		return ix.ClearAnnot(ctx, id)
@@ -310,8 +387,12 @@ func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
 		if err := ix.FillPaths(ctx, shares); err != nil {
 			return err
 		}
+		skipped, err := ix.SkippedByShare(ctx)
+		if err != nil {
+			return err
+		}
 		for _, sh := range shares {
-			info := ShareInfo{Row: sh}
+			info := ShareInfo{Row: sh, Skipped: int(skipped[sh.ID])}
 			all, err := a.store(sh.Path).All()
 			if err != nil {
 				info.Error = err.Error()
@@ -323,9 +404,6 @@ func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
 					info.Orphaned++
 					continue
 				case stateOf(an)&^index.StateSkipped == 0:
-					if an.Skipped {
-						info.Skipped++
-					}
 					continue
 				}
 				info.Annotated++
@@ -377,6 +455,7 @@ type reconciler struct {
 	byDev   map[uint64]string
 	byName  map[string][]uint64
 	claimed map[int64]bool // entries already matched to an annotation
+	failed  error          // set when the index could not be asked about a skipped item
 }
 
 // reconcile matches every stored annotation to an entry in a new index,
@@ -450,11 +529,22 @@ func (a *App) reconcile(ctx context.Context, ix *index.Index) (warnings []string
 		}
 		return edits[sharePath]
 	}
+	// Skips were once kept among the annotations, as records with nothing in
+	// them. They move to the skipped list of the share the item is in now.
+	type oldSkip struct{ from, path, to, rel string }
+	var oldSkips []oldSkip
 	var cache []index.Annot
 	for _, it := range items {
 		next, dest := it.an, it.sharePath
+		next.Skipped = false
+		empty := stateOf(next) == 0 && next.Owner == "" && next.ReviewAfter == ""
 		destPath, inShare := sharePaths[it.row.Share]
 		if !it.found || !inShare {
+			if empty {
+				// A skip of something that is gone records nothing at all.
+				editFor(it.sharePath).remove = append(editFor(it.sharePath).remove, it.an.Path)
+				continue
+			}
 			next.Orphaned = true
 		} else {
 			rowPath, err := ix.EntryPath(ctx, it.row.ID)
@@ -463,6 +553,11 @@ func (a *App) reconcile(ctx context.Context, ix *index.Index) (warnings []string
 				continue
 			}
 			dest = destPath
+			if empty {
+				delete(r.claimed, it.row.ID) // the skipped list claims it below
+				oldSkips = append(oldSkips, oldSkip{it.sharePath, it.an.Path, dest, relTo(dest, rowPath)})
+				continue
+			}
 			next.Orphaned = false
 			next.Path = relTo(dest, rowPath)
 			next.Kind = it.row.Kind
@@ -474,6 +569,88 @@ func (a *App) reconcile(ctx context.Context, ix *index.Index) (warnings []string
 		}
 		editFor(it.sharePath).remove = append(editFor(it.sharePath).remove, it.an.Path)
 		editFor(dest).put = append(editFor(dest).put, next)
+	}
+
+	// The skipped lists. A skip is kept while its item is where it was and
+	// carries no annotation; one whose item was renamed or deleted is
+	// dropped, which returns a renamed item to the review queues.
+	unsaved := make(map[string]bool)
+	for _, sh := range shares {
+		sharePath, ok := sharePaths[sh.ID]
+		if !ok {
+			continue
+		}
+		keep := func(listed []string) []string {
+			asFound := slices.Clone(listed)
+			for _, old := range oldSkips {
+				if old.to == sharePath {
+					listed = append(listed, old.rel)
+				}
+			}
+			// A bulk skip lists most of what a folder holds, so the items
+			// are looked up a folder at a time.
+			found := map[string]int64{".": sh.ID}
+			inDir := make(map[string][]string)
+			for i, rel := range listed {
+				rel = filepath.Clean(rel)
+				listed[i] = rel
+				if rel != "." {
+					dir, name := filepath.Split(rel)
+					inDir[filepath.Clean(dir)] = append(inDir[filepath.Clean(dir)], name)
+				}
+			}
+			dirs := map[string]int64{".": sh.ID}
+			for dir, names := range inDir {
+				parent := r.inShare(dirs, dir)
+				if parent == 0 {
+					continue
+				}
+				ids, err := ix.ChildIDs(ctx, parent, names)
+				if err != nil {
+					r.failed = err
+					break
+				}
+				for name, id := range ids {
+					found[filepath.Join(dir, name)] = id
+				}
+			}
+			if r.failed != nil {
+				// "Not found" must mean the item is gone, never that the
+				// index could not be asked: leave the list as it was.
+				warn("skipped items in %s could not be matched to the index: %v", sharePath, r.failed)
+				r.failed, unsaved[sharePath] = nil, true
+				return asFound
+			}
+			kept := make([]string, 0, len(listed))
+			for _, rel := range listed {
+				id := found[rel]
+				if id == 0 || r.claimed[id] {
+					continue
+				}
+				r.claimed[id] = true
+				kept = append(kept, rel)
+				cache = append(cache, index.Annot{Entry: id, State: index.StateSkipped})
+			}
+			return kept
+		}
+		store := a.store(sharePath)
+		if a.cfg.ReadOnly {
+			listed, err := store.Skips()
+			if err != nil {
+				warn("skipped items in %s could not be read: %v", sharePath, err)
+				continue
+			}
+			keep(listed)
+		} else if err := store.EditSkips(keep); err != nil {
+			warn("skipped items in %s could not be updated: %v", sharePath, err)
+			unsaved[sharePath] = true
+		}
+	}
+	for _, old := range oldSkips {
+		// The old record goes only once the skip is safely in its new place.
+		if !unsaved[old.to] {
+			editFor(old.from).remove = append(editFor(old.from).remove, old.path)
+		}
 	}
 
 	if !a.cfg.ReadOnly {
@@ -508,6 +685,37 @@ func (a *App) reconcile(ctx context.Context, ix *index.Index) (warnings []string
 		warn("annotations were not loaded: %v", err)
 	}
 	return warnings
+}
+
+// inShare returns the ID of the entry at a path inside a share, or 0 if there
+// is none. dirs remembers the folders found so far, so that a long list of
+// items costs one lookup each and not one for every folder on the way down.
+func (r *reconciler) inShare(dirs map[string]int64, rel string) int64 {
+	if id, ok := dirs[rel]; ok {
+		return id
+	}
+	// The list can be edited by hand: a path that climbs out of the share
+	// points nowhere.
+	if filepath.IsAbs(rel) || rel == ".." || strings.HasPrefix(rel, "../") {
+		return 0
+	}
+	dir, name := filepath.Split(rel)
+	parent, ok := dirs[filepath.Clean(dir)]
+	if !ok {
+		parent = r.inShare(dirs, filepath.Clean(dir))
+		dirs[filepath.Clean(dir)] = parent
+	}
+	if parent == 0 {
+		return 0
+	}
+	id, err := r.ix.ChildID(r.ctx, parent, name)
+	if err != nil {
+		if !errors.Is(err, index.ErrNotFound) {
+			r.failed = err
+		}
+		return 0
+	}
+	return id
 }
 
 // same reports whether an indexed entry is the item an annotation was made on.

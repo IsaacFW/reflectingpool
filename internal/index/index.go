@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -75,6 +77,16 @@ const (
 	// A directory's modified time is the newest file beneath it; an empty
 	// directory falls back to its own.
 	modifiedExpr = `(CASE WHEN e.kind = 1 AND e.max_mtime > 0 THEN e.max_mtime ELSE e.mtime END)`
+	// An item's age runs from the later of when it was created and when it
+	// was last modified: a file copied onto the pool last week is a week old
+	// here, whatever modified time it brought with it.
+	newestExpr = `(CASE WHEN e.kind = 1 AND MAX(e.max_mtime, e.max_btime) > 0 THEN MAX(e.max_mtime, e.max_btime) ELSE MAX(e.mtime, e.btime) END)`
+	// The folders at and beneath one entry, found through the folders-only
+	// index so that the cost does not depend on how many files they hold.
+	subtreeSQL = `WITH RECURSIVE sub(id) AS (
+			SELECT ? UNION ALL
+			SELECT d.id FROM entries d INDEXED BY entries_dirs JOIN sub ON d.parent = sub.id WHERE d.kind = 1
+		) SELECT id FROM sub`
 )
 
 type scanner interface{ Scan(dest ...any) error }
@@ -100,8 +112,15 @@ type Index struct {
 	Path string
 	Info Info
 
-	queueMu sync.Mutex
-	queues  map[string][]QueueGroup // ranked groups per queue definition
+	// ageCol is the SQL for an entry's age bucket, fixed when the index is
+	// opened so that an item does not change bucket between two calls.
+	ageCol string
+
+	// qmu guards the review-queue state and serialises changes to the
+	// annotation cache, which that state is kept in step with.
+	qmu        sync.Mutex
+	queues     map[string]*queueState // per queue definition
+	queueCalls int64
 }
 
 func Open(path string) (*Index, error) {
@@ -125,6 +144,17 @@ func Open(path string) (*Index, error) {
 	// The file name carries the scan's start time to the millisecond, which
 	// makes it unique among the indexes of one installation.
 	ix.Info.ID = strings.TrimSuffix(filepath.Base(path), ".db")
+	if _, err := db.Exec(upgrades); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("index %s: %w", path, err)
+	}
+	// Ages are measured from the scan, not from today: the index describes
+	// the pool as it was then.
+	scanned := ix.Info.Started
+	if scanned.IsZero() {
+		scanned = time.Now()
+	}
+	ix.ageCol = ageBucketSQL(scanned)
 	return ix, nil
 }
 
@@ -178,6 +208,7 @@ func (ix *Index) EntryPath(ctx context.Context, id int64) (string, error) {
 
 func (ix *Index) pathOf(ctx context.Context, id int64, cache map[int64]string) (string, error) {
 	var parts []string
+	var chain []int64 // chain[i] is the entry that parts[i] names
 	base := ""
 	for id != 0 {
 		if p, ok := cache[id]; ok {
@@ -193,7 +224,7 @@ func (ix *Index) pathOf(ctx context.Context, id int64, cache map[int64]string) (
 		if err != nil {
 			return "", err
 		}
-		parts = append(parts, name)
+		parts, chain = append(parts, name), append(chain, id)
 		id = parent
 	}
 	for i := len(parts) - 1; i >= 0; i-- {
@@ -204,6 +235,11 @@ func (ix *Index) pathOf(ctx context.Context, id int64, cache map[int64]string) (
 			base += parts[i]
 		default:
 			base += "/" + parts[i]
+		}
+		// Every folder on the way down is remembered, so a neighbouring
+		// folder costs one lookup, not one for each level above it.
+		if cache != nil {
+			cache[chain[i]] = base
 		}
 	}
 	return base, nil
@@ -261,6 +297,48 @@ func (ix *Index) Lookup(ctx context.Context, path string) (Row, error) {
 	return Row{}, ErrNotFound
 }
 
+// ChildID returns the ID of the entry with the given name directly inside a
+// directory.
+func (ix *Index) ChildID(ctx context.Context, parent int64, name string) (int64, error) {
+	var id int64
+	err := ix.db.QueryRowContext(ctx, `SELECT id FROM entries WHERE parent = ? AND name = ?`, parent, name).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
+}
+
+// ChildIDs returns the IDs of the entries with the given names directly
+// inside a directory. Names that are not there are left out.
+func (ix *Index) ChildIDs(ctx context.Context, parent int64, names []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(names))
+	for chunk := range slices.Chunk(names, 500) {
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, parent)
+		for _, name := range chunk {
+			args = append(args, name)
+		}
+		marks := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		rows, err := ix.db.QueryContext(ctx, `SELECT name, id FROM entries WHERE parent = ? AND name IN (`+marks+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var name string
+			var id int64
+			if err := rows.Scan(&name, &id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[name] = id
+		}
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 // Sort names a sort key and direction for listings.
 type Sort struct {
 	Key  string
@@ -272,6 +350,8 @@ var sortExprs = map[string]string{
 	"disk":     "e.disk",
 	"name":     "e.name COLLATE NOCASE",
 	"modified": modifiedExpr,
+	"created":  "e.btime",
+	"age":      newestExpr, // ascending is oldest first
 	"files":    "e.files",
 }
 
@@ -337,6 +417,7 @@ func (ix *Index) Shares(ctx context.Context) ([]Row, error) {
 // Filter narrows a listing. Zero values mean "any".
 type Filter struct {
 	Kind           string   `json:"kind"`   // "file" or "dir"
+	Under          int64    `json:"under"`  // ID of a folder: only what is inside it, at any depth
 	Shares         []int64  `json:"shares"` // share IDs
 	Types          []string `json:"types"`  // category names
 	Exts           []string `json:"exts"`
@@ -362,6 +443,10 @@ func (f Filter) where() (string, []any, error) {
 		conds = append(conds, "e.kind = 1")
 	default:
 		return "", nil, QueryError(fmt.Sprintf("unknown kind %q", f.Kind))
+	}
+	if f.Under != 0 {
+		conds = append(conds, "e.parent IN ("+subtreeSQL+")")
+		args = append(args, f.Under)
 	}
 	if len(f.Shares) > 0 {
 		conds = append(conds, in("e.share", len(f.Shares)))
@@ -497,46 +582,4 @@ func (ix *Index) Datasets(ctx context.Context) ([]Dataset, error) {
 		out = append(out, d)
 	}
 	return out, rows.Err()
-}
-
-// Annot is one row of the annotation cache.
-type Annot struct {
-	Entry    int64
-	State    int
-	Prefixes []string
-}
-
-func prefixColumn(prefixes []string) string {
-	if len(prefixes) == 0 {
-		return ""
-	}
-	return "|" + strings.Join(prefixes, "|") + "|"
-}
-
-func (ix *Index) SetAnnot(ctx context.Context, a Annot) error {
-	_, err := ix.db.ExecContext(ctx, `INSERT OR REPLACE INTO annot VALUES(?,?,?)`, a.Entry, a.State, prefixColumn(a.Prefixes))
-	return err
-}
-
-func (ix *Index) ClearAnnot(ctx context.Context, entry int64) error {
-	_, err := ix.db.ExecContext(ctx, `DELETE FROM annot WHERE entry = ?`, entry)
-	return err
-}
-
-// ReplaceAnnots swaps the whole annotation cache.
-func (ix *Index) ReplaceAnnots(ctx context.Context, all []Annot) error {
-	tx, err := ix.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM annot`); err != nil {
-		return err
-	}
-	for _, a := range all {
-		if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO annot VALUES(?,?,?)`, a.Entry, a.State, prefixColumn(a.Prefixes)); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
 }
