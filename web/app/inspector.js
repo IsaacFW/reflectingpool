@@ -1,8 +1,8 @@
 // The right-hand column: whatever item is selected, with its facts, a
 // preview and the form that records what it is for. Review uses the same
 // preview and form.
-import { api, contentURL, FLAG, indexId, lockedShares, session, STATE, superseded } from './api.js';
-import { ago, bytes, count, date, plural } from './format.js';
+import { api, contentURL, FLAG, indexId, lockedShares, previewURL, session, STATE, superseded } from './api.js';
+import { ago, bytes, count, date, duration, plural } from './format.js';
 import { html, useEffect, useRef, useState } from './lib.js';
 import { prefs, say } from './state.js';
 import { bodyOf, Fields, formFrom, isBlank, loadPrefixes, prefixList } from './annotate.js';
@@ -15,6 +15,8 @@ const MiB = 1024 * 1024;
 const IMAGES = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg'];
 const VIDEOS = ['mp4', 'm4v', 'webm', 'mov', 'mkv', 'ogv'];
 const AUDIO = ['mp3', 'flac', 'wav', 'ogg', 'opus', 'm4a', 'aac'];
+// Photos the server turns into a JPEG: camera RAW files and HEIC.
+const MADE = ['cr2', 'cr3', 'nef', 'arw', 'dng', 'orf', 'rw2', 'raw', 'raf', 'pef', 'srw', 'heic', 'heif'];
 
 // The colours bytes can take: three hues and a neutral, the most that stay
 // apart for colour-blind readers when any two can end up side by side.
@@ -133,6 +135,57 @@ function FolderPreview(/** @type {{entry: Entry}} */ { entry }) {
     ${kids.total > kids.children.length && html`<div class="pv-cap">The largest ${kids.children.length} of ${count(kids.total)}.</div>`}`;
 }
 
+/**
+ * A picture the server makes of a file the browser cannot show by itself:
+ * a sheet of stills from across a film, or a JPEG of a RAW or HEIC photo.
+ * The first look at a file can take a few seconds; after that it is kept.
+ */
+function Made(/** @type {{entry: Entry}} */ { entry }) {
+  const [state, setState] = useState(/** @type {{info?: {kind: string, duration?: number, width?: number, height?: number, codec?: string, stills?: number}, error?: string} | null} */ (null));
+  const [big, setBig] = useState(false);
+  useEffect(() => {
+    let live = true;
+    setState(null);
+    setBig(false);
+    api('GET', previewURL(entry.id) + '?info=1')
+      .then((info) => { if (live) setState({ info }); })
+      .catch((e) => { if (live && !superseded(e)) setState({ error: e instanceof Error ? e.message : String(e) }); });
+    return () => { live = false; };
+  }, [entry.id, indexId.value]);
+
+  if (!state) return html`<div class="pv-msg">Making a preview…</div>`;
+  if (state.error || !state.info) return html`<div class="pv-msg"><b>No preview.</b>${state.error}</div>`;
+  const info = state.info;
+  const src = previewURL(entry.id);
+  const facts = [
+    info.duration ? duration(info.duration) : '',
+    info.width && info.height ? `${info.width}×${info.height}` : '',
+    info.kind === 'video' ? info.codec || '' : '',
+  ].filter(Boolean).join(', ');
+  return html`
+    <button class="pv-zoom" type="button" title="Show it large" onClick=${() => setBig(true)}>
+      <img src=${src} alt=${(info.kind === 'video' ? 'Stills from ' : 'Preview of ') + entry.name} />
+    </button>
+    <div class="pv-cap">${info.kind === 'video' ? `${info.stills === 1 ? 'The opening frame' : `${info.stills} stills from across the film`}. ` : ''}${facts}</div>
+    ${big && html`<${Lightbox} src=${src} name=${entry.name} onClose=${() => setBig(false)} />`}`;
+}
+
+/** A film: its stills, and the browser's own player where it has one for the format. */
+function Film(/** @type {{entry: Entry, playable: boolean}} */ { entry, playable }) {
+  const [playing, setPlaying] = useState(false);
+  const [cannot, setCannot] = useState(false);
+  useEffect(() => { setPlaying(false); setCannot(false); }, [entry.id]);
+  if (playing) {
+    return html`
+      <video src=${contentURL(entry.id)} controls autoplay onError=${() => { setCannot(true); setPlaying(false); }}></video>
+      <div><button class="btn small" type="button" onClick=${() => setPlaying(false)}>Back to the stills</button></div>`;
+  }
+  return html`
+    <${Made} entry=${entry} />
+    ${playable && !cannot && html`<div><button class="btn small" type="button" onClick=${() => setPlaying(true)}>Play it here</button></div>`}
+    ${cannot && html`<div class="pv-cap">This browser cannot play this file.</div>`}`;
+}
+
 /** A picture at the size of the window, over the page. Click or Esc closes it. */
 function Lightbox(/** @type {{src: string, name: string, onClose: () => void}} */ { src, name, onClose }) {
   const ref = useRef(/** @type {HTMLDialogElement | null} */ (null));
@@ -175,8 +228,11 @@ export function Preview({ entry, large }) {
         <img src=${src} alt=${'Preview of ' + entry.name} onError=${() => setBroken(true)} />
       </button>
       ${big && html`<${Lightbox} src=${src} name=${entry.name} onClose=${() => setBig(false)} />`}`;
-  } else if (VIDEOS.includes(entry.ext)) {
-    body = html`<video src=${src} controls preload="metadata" onError=${() => setBroken(true)}></video>`;
+  } else if (entry.type === 'video') {
+    // Stills first: they show what a film is at a glance, in any format.
+    body = html`<${Film} entry=${entry} playable=${VIDEOS.includes(entry.ext)} />`;
+  } else if (MADE.includes(entry.ext)) {
+    body = html`<${Made} entry=${entry} />`;
   } else if (AUDIO.includes(entry.ext)) {
     body = html`<audio src=${src} controls preload="none" onError=${() => setBroken(true)}></audio>`;
   } else if (entry.ext === 'pdf') {
@@ -187,7 +243,7 @@ export function Preview({ entry, large }) {
     body = html`<${TextPreview} entry=${entry} />`;
   } else {
     return none(entry.type === 'image' || entry.type === 'video'
-      ? 'This browser cannot show this format. Generated previews for such files are on the way.'
+      ? 'There is no preview for this format.'
       : 'There is nothing to show for this kind of file.');
   }
   return html`<div class=${cls}>${body}</div>`;

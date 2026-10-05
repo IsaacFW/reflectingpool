@@ -4,12 +4,13 @@
 #   scripts/e2e.sh                       all of them
 #   RP_E2E_SHOTS=.cache/shots scripts/e2e.sh    also save a screenshot of each step
 #
-# Needs only Docker. The image is Go plus Chromium and is built once.
+# Needs only Docker. The image is Go, Chromium and ffmpeg (for the previews)
+# and is built once.
 set -e
 repo=$(cd "$(dirname "$0")/.." && pwd)
 docker build -q -t reflectingpool-e2e - >/dev/null <<'IMAGE'
 FROM golang:1.27-alpine
-RUN apk add --no-cache chromium
+RUN apk add --no-cache chromium ffmpeg
 IMAGE
 mkdir -p "$repo/.cache/go"
 # RP_E2E_MOUNT adds a volume (name:path), for tests that need a large tree.

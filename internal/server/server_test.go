@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -585,6 +587,46 @@ func TestPrefixCountsAndMissingNotes(t *testing.T) {
 	if r := ro.request("DELETE", "/api/shares/"+ro.id("media")+"/annotations?path=x", nil, nil); r.status != 403 {
 		t.Errorf("read-only delete: %d", r.status)
 	}
+}
+
+func TestPreviewRoute(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	// A camera file: some header, then the JPEG the camera embedded.
+	var pic bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 400, 300))
+	if err := jpeg.Encode(&pic, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	raw := append([]byte("II*\x00 raw sensor data would be here "), pic.Bytes()...)
+	if err := os.WriteFile(filepath.Join(h.root, "media/shot.cr2"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.signIn()
+
+	shot := h.id("shot.cr2")
+	r := h.expect(200, h.request("GET", "/api/entries/"+shot+"/preview", nil, nil))
+	if r.header.Get("Content-Type") != "image/jpeg" || !bytes.Equal(r.raw, pic.Bytes()) {
+		t.Errorf("preview: %s, %d bytes; want the %d-byte picture inside the file", r.header.Get("Content-Type"), len(r.raw), pic.Len())
+	}
+	r = h.expect(200, h.request("GET", "/api/entries/"+shot+"/preview?info=1", nil, nil))
+	if r.body["kind"] != "photo" || r.body["width"] != float64(400) {
+		t.Errorf("info = %s", r.raw)
+	}
+	// It is kept in the data directory, not in the share.
+	if kept, _ := filepath.Glob(filepath.Join(h.app.Config().DataDir, "previews", "*.jpg")); len(kept) != 1 {
+		t.Errorf("previews kept: %v", kept)
+	}
+	if _, err := os.Stat(filepath.Join(h.root, "media/.reflection")); !os.IsNotExist(err) {
+		t.Error("making a preview wrote into the share")
+	}
+
+	if r := h.request("GET", "/api/entries/"+h.id("notes.txt")+"/preview", nil, nil); r.status != 404 || r.body["code"] != "no_preview" {
+		t.Errorf("a text file: %d %s", r.status, r.raw)
+	}
+	if r := h.request("GET", "/api/entries/"+h.id("media")+"/preview", nil, nil); r.status != 400 || r.body["code"] != "not_a_file" {
+		t.Errorf("a folder: %d %s", r.status, r.raw)
+	}
+	h.expect(401, newHarness(t, Options{}, false).request("GET", "/api/entries/1/preview", nil, nil))
 }
 
 func TestSettingsAndSchedule(t *testing.T) {

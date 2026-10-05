@@ -100,3 +100,8 @@ export function loadShareAccess() {
     lockedShares.value = new Map(r.shares.filter((/** @type {{writable: boolean}} */ s) => !s.writable).map((/** @type {{id: number, name: string}} */ s) => [s.id, s.name]));
   }).catch(() => {});
 }
+
+/** The address of a picture the server makes of a file the browser cannot show: stills for a film, a JPEG for a RAW or HEIC photo. */
+export function previewURL(/** @type {number} */ id) {
+  return `/api/entries/${id}/preview`;
+}

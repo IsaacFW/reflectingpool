@@ -466,3 +466,5 @@ dialog.lightbox{width:auto;max-width:96vw;max-height:96vh;padding:8px;background
   .vl.find .c-type,.vl.find .c-age{display:none}
 }
 .nm>.mark,.nm>.tag{flex:0 10 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pv.compact .pv-zoom img{max-height:200px}
+.pv.large .pv-zoom img{max-height:62vh}

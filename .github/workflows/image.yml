@@ -27,7 +27,7 @@ jobs:
       - name: Test
         run: |
           docker run --rm -v "$PWD":/src -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
-            golang:1.27-alpine sh -c 'go vet ./... && go test ./...'
+            golang:1.27-alpine sh -c 'apk add -q ffmpeg && go vet ./... && go test ./...'
 
       # The interface has no build step, so these two are its only checks:
       # the types its comments declare, and a real browser working through it.
