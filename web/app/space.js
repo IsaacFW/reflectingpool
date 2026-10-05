@@ -2,7 +2,7 @@
 // it. This is the sorted bar list of the design; the map above it comes later.
 import { api, FLAG, indexId, superseded } from './api.js';
 import { ago, bytes, count, date, plural } from './format.js';
-import { Inspector, Marks, typeClass } from './inspector.js';
+import { Inspector, Marks, Parts, parts, partsTitle } from './inspector.js';
 import { html, useEffect, useState } from './lib.js';
 import { VirtualList } from './list.js';
 import { FolderMap } from './map.js';
@@ -157,9 +157,9 @@ export function Space() {
     const hollow = e.kind === 'file' && !e.counted;
     return html`
       <div class="nm" role="gridcell">${e.kind === 'dir' ? FOLDER : FILE}<span class="fs">${e.name}</span><${Marks} entry=${e} /></div>
-      <div class="c-bar" role="gridcell"><div class="bar">
+      <div class="c-bar" role="gridcell" title=${partsTitle(parts(e, mode))}><div class="bar">
         <div class=${'fill' + (hollow ? ' hollow' : '')} style=${{ width: `${share.toFixed(2)}%` }}>
-          ${!hollow && size > 0 && html`<i class=${typeClass(e)} style=${{ flexGrow: 1 }}></i>`}
+          ${!hollow && size > 0 && html`<${Parts} entry=${e} mode=${mode} />`}
         </div>
       </div></div>
       <div class="c-pct num" role="gridcell">${whole > 0 ? (share < 0.1 && size > 0 ? '<0.1%' : `${share.toFixed(share < 10 ? 1 : 0)}%`) : ''}</div>
@@ -200,7 +200,7 @@ export function Space() {
             <span class="legend-i"><i class="sw k-backup"></i>Archives and disk images</span>
             <span class="legend-i"><i class="sw k-image"></i>Images</span>
             <span class="legend-i"><i class="sw k-other"></i>Other files</span>
-            <span class="legend-i"><i class="sw k-plain"></i>Folders</span>
+            <span class="legend-i"><i class="sw k-plain"></i>Mixed, in the map</span>
           </div>
         </div>
       </div>

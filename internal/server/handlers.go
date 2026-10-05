@@ -168,11 +168,18 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 			if entry.Path, err = ix.EntryPath(ctx, id); err != nil {
 				return err
 			}
-			resp["entry"] = entry
+			one := []index.Row{entry}
+			if err := ix.FillTypes(ctx, one); err != nil {
+				return err
+			}
+			resp["entry"] = one[0]
 		}
 		children, total, err := ix.Children(ctx, id, q.sort(), limit, offset)
+		if err != nil {
+			return err
+		}
 		resp["children"], resp["total"] = children, total
-		return err
+		return ix.FillTypes(ctx, children)
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -201,6 +208,9 @@ func (s *Server) entries(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	err := s.app.View(func(ix *index.Index) error {
 		var err error
 		if rows, err = ix.Find(ctx, f, q.sort(), limit, offset); err != nil {
+			return err
+		}
+		if err = ix.FillTypes(ctx, rows); err != nil {
 			return err
 		}
 		if totals, err = ix.Count(ctx, f); err != nil {
@@ -289,7 +299,11 @@ func (s *Server) entry(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 		if entry.Path, err = ix.EntryPath(ctx, id); err != nil {
 			return err
 		}
-		resp["entry"] = entry
+		one := []index.Row{entry}
+		if err := ix.FillTypes(ctx, one); err != nil {
+			return err
+		}
+		resp["entry"] = one[0]
 		if entry.Nlink > 1 && !entry.IsDir() {
 			links, err := ix.ByInode(ctx, entry.Dev, entry.Ino)
 			if err != nil {
@@ -438,8 +452,10 @@ func (s *Server) queue(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	var res index.QueueResult
 	err := s.app.View(func(ix *index.Index) error {
 		var err error
-		res, err = ix.Queue(ctx, req.spec())
-		return err
+		if res, err = ix.Queue(ctx, req.spec()); err != nil {
+			return err
+		}
+		return ix.FillTypes(ctx, res.Items)
 	})
 	if err != nil {
 		s.fail(w, err)

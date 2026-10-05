@@ -3,7 +3,7 @@
 import { api, indexId, superseded } from './api.js';
 import { prefixList, loadPrefixes } from './annotate.js';
 import { ago, bytes, count, date, plural } from './format.js';
-import { Inspector, Marks, typeClass } from './inspector.js';
+import { Inspector, Marks, Parts } from './inspector.js';
 import { html, useEffect, useRef, useState } from './lib.js';
 import { VirtualList } from './list.js';
 import { go, prefs, route } from './state.js';
@@ -159,7 +159,7 @@ export function Find() {
       </div>
       <div class="c-bar" role="gridcell"><div class="bar">
         <div class="fill" style=${{ width: `${largest.current > 0 ? Math.min(100, (100 * size) / largest.current).toFixed(2) : 0}%` }}>
-          ${size > 0 && html`<i class=${typeClass(e)} style=${{ flexGrow: 1 }}></i>`}</div>
+          ${size > 0 && html`<${Parts} entry=${e} mode=${mode} />`}</div>
       </div></div>
       <div class="c-size num" role="gridcell">${bytes(size)}</div>
       <div class="c-type" role="gridcell">${e.kind === 'dir' ? 'folder' : e.type}</div>

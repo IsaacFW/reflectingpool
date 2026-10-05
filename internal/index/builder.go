@@ -64,6 +64,10 @@ const upgrades = `
 CREATE TABLE IF NOT EXISTS covered(dir INTEGER PRIMARY KEY);
 -- Folders only, for walking a subtree without touching its files.
 CREATE INDEX IF NOT EXISTS entries_dirs ON entries(parent) WHERE kind = 1;
+-- What each folder is made of: bytes and files of each type beneath it. Worked
+-- out from the entries once the index is built; see types.go.
+CREATE TABLE IF NOT EXISTS dir_types(dir INTEGER NOT NULL, cat INTEGER NOT NULL, size INTEGER NOT NULL,
+	disk INTEGER NOT NULL, files INTEGER NOT NULL, PRIMARY KEY(dir, cat)) WITHOUT ROWID;
 `
 
 const (
@@ -255,6 +259,10 @@ func (b *Builder) Finish(info Info, datasets []Dataset) (string, error) {
 	if _, err := b.db.Exec(indexes + upgrades + "ANALYZE;"); err != nil {
 		b.Abort()
 		return "", fmt.Errorf("building indexes: %w", err)
+	}
+	if err := fillDirTypes(b.db); err != nil {
+		b.Abort()
+		return "", fmt.Errorf("summing file types per folder: %w", err)
 	}
 	// Give a placeholder name to any filesystem the mount table did not
 	// explain, so every entry's dev resolves to a dataset.

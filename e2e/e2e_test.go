@@ -945,3 +945,33 @@ func TestReviewFolders(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+// A folder's bar shows what the folder is made of, and the item column gives
+// the figures.
+func TestFoldersShowWhatTheyHold(t *testing.T) {
+	p := open(t)
+	p.signIn("types 01 signed in", "/space?path="+root+"/inbox", `.vl-row`)
+	// inbox holds films (most of its bytes) and text files: its row in the
+	// pool's list has a blue part for video, and the map colours it as video.
+	p.do("types 02 the pool",
+		chromedp.Navigate(base+"/space?path="+root),
+		chromedp.WaitVisible(row("inbox")+`//i[contains(@class,"k-video")]`),
+		chromedp.Click(row("inbox")),
+		chromedp.WaitVisible(`//aside//div[.="What is in it"]`),
+	)
+	if got := p.text(`//aside//div[.="What is in it"]/following-sibling::table`); !strings.Contains(got, "video") || !strings.Contains(got, "text") {
+		t.Errorf("what inbox holds = %q", got)
+	}
+	// docs is almost all small binary files: no single colour but the neutral one.
+	if n := eval[int](p, `document.querySelectorAll('.capbar i:not(.free)').length`); n != 0 {
+		t.Errorf("unexpected capacity bar on Space: %d", n)
+	}
+	p.do("types 03 overview by kind",
+		chromedp.Click(has("a", "Overview")),
+		chromedp.WaitVisible(`.capbar i.k-backup`), // the test pool is mostly .bin files, which count as disk images
+		chromedp.WaitVisible(`//span[contains(@class,"legend-i")][starts-with(., "Archives and disk images")]`),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}

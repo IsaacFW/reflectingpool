@@ -324,3 +324,61 @@ func TestSearchByWordsAndBestMatch(t *testing.T) {
 		t.Errorf("count for two words = %+v, %v", totals, err)
 	}
 }
+
+// What a folder is made of is worked out from the entries, with no further
+// look at the pool, and an index built before this existed gains it on opening.
+func TestFoldersKnowWhatTheyAreMadeOf(t *testing.T) {
+	ctx := context.Background()
+	root, ix := fixture(t)
+	made := func(ix *Index, rel string) map[string]TypeTotal {
+		t.Helper()
+		rows := []Row{lookup(t, ix, root, rel)}
+		if err := ix.FillTypes(ctx, rows); err != nil {
+			t.Fatal(err)
+		}
+		out := make(map[string]TypeTotal)
+		for _, tt := range rows[0].Types {
+			out[tt.Type] = tt
+		}
+		return out
+	}
+	check := func(ix *Index) {
+		t.Helper()
+		// The whole pool: the hardlinked 9000-byte film is counted once.
+		all := made(ix, "")
+		if all["video"].Size != 9000+2000 || all["video"].Files != 2 || all["audio"].Size != 4050 || all["audio"].Files != 2 ||
+			all["document"].Size != 300 || all["text"].Size != 20 {
+			t.Errorf("the root is made of %+v", all)
+		}
+		var sum int64
+		for _, tt := range all {
+			sum += tt.Size
+		}
+		if whole := lookup(t, ix, root, ""); sum != whole.Size {
+			t.Errorf("the types add up to %d but the root holds %d", sum, whole.Size)
+		}
+		// A folder two levels down, and largest first.
+		rows := []Row{lookup(t, ix, root, "media/music")}
+		if err := ix.FillTypes(ctx, rows); err != nil || len(rows[0].Types) != 1 || rows[0].Types[0] != (TypeTotal{Type: "audio", Size: 4050, Disk: rows[0].Types[0].Disk, Files: 2}) {
+			t.Errorf("media/music is made of %+v, %v", rows[0].Types, err)
+		}
+		// Files carry no make-up.
+		file := []Row{lookup(t, ix, root, "docs/report.pdf")}
+		if err := ix.FillTypes(ctx, file); err != nil || file[0].Types != nil {
+			t.Errorf("a file got a make-up: %+v", file[0].Types)
+		}
+	}
+	check(ix)
+
+	path := ix.Path
+	if _, err := ix.db.Exec(`DROP TABLE dir_types; DELETE FROM meta WHERE key = 'dir_types'`); err != nil {
+		t.Fatal(err)
+	}
+	ix.Close()
+	old, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer old.Close()
+	check(old)
+}
