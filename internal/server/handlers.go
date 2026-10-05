@@ -147,7 +147,8 @@ func (s *Server) shareAnnotations(w http.ResponseWriter, r *http.Request, _ auth
 	writeJSON(w, http.StatusOK, map[string]any{"annotations": all})
 }
 
-// tree lists one directory's children for the space breakdown. With no id it
+// tree lists one directory's children for the space breakdown, or only the
+// folders among them with kind=dir. With no id it
 // lists the scan roots.
 func (s *Server) tree(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	q := &query{v: r.URL.Query()}
@@ -174,7 +175,11 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 			}
 			resp["entry"] = one[0]
 		}
-		children, total, err := ix.Children(ctx, id, q.sort(), limit, offset)
+		list := ix.Children
+		if q.v.Get("kind") == "dir" { // folders only, for the folder tree
+			list = ix.ChildDirs
+		}
+		children, total, err := list(ctx, id, q.sort(), limit, offset)
 		if err != nil {
 			return err
 		}

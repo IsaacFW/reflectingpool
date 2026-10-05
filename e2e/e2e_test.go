@@ -975,3 +975,34 @@ func TestFoldersShowWhatTheyHold(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+// The folder tree: out with a button, a level at a time, straight to a folder,
+// and open along the way to wherever the list is.
+func TestFolderTree(t *testing.T) {
+	p := open(t)
+	p.signIn("tree 01 signed in", "/space", `.vl-row`)
+	p.do("tree 02 out, with the shares in it",
+		chromedp.Click(has("button", "Folder tree")),
+		chromedp.WaitVisible(`//nav[@aria-label="Folders"]//button[contains(@class,"tree-name")][.="docs"]`),
+	)
+	p.do("tree 03 a level opened, and a folder gone to",
+		chromedp.Click(`button[aria-label="Open docs"]`),
+		chromedp.WaitVisible(`//nav[@aria-label="Folders"]//button[contains(@class,"tree-name")][.="taxes"]`),
+		chromedp.Click(`//nav[@aria-label="Folders"]//button[contains(@class,"tree-name")][.="taxes"]`),
+		chromedp.WaitVisible(row("receipt.pdf")),
+		chromedp.WaitVisible(`//div[contains(@class,"tree-row")][contains(@class,"cur")]/button[.="taxes"]`),
+	)
+	// Arriving somewhere by its address opens the tree down to it; the tree stays out across a reload.
+	p.do("tree 04 open along the way",
+		chromedp.Navigate(base+"/space?path="+root+"/inbox/sub"),
+		chromedp.WaitVisible(row("deep1.txt")),
+		chromedp.WaitVisible(`//div[contains(@class,"tree-row")][contains(@class,"cur")]/button[.="sub"]`),
+	)
+	p.do("tree 05 hidden again",
+		chromedp.Click(has("button", "Hide the folder tree")),
+		chromedp.WaitNotPresent(`nav[aria-label="Folders"]`),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
