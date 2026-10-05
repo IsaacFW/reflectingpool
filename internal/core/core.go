@@ -27,6 +27,7 @@ var (
 	ErrNoShare     = errors.New("this item is not inside a share, so there is nowhere to keep its annotation")
 	ErrGone        = errors.New("the item is no longer where the last scan found it; scan again")
 	ErrNotFile     = errors.New("only regular files have contents to show")
+	ErrClosed      = errors.New("the application is shutting down")
 )
 
 // InputError reports a request the user can correct.
@@ -48,11 +49,15 @@ type App struct {
 	cfg Config
 	db  *sql.DB
 	bg  context.Context
+	// stop ends bg, and with it any scan in progress.
+	stop context.CancelFunc
 
 	ixMu sync.RWMutex
 	ix   *index.Index
 
 	scanMu    sync.Mutex
+	closed    bool
+	scans     sync.WaitGroup // scans in progress; Close waits for them
 	scanning  bool
 	intensity scan.Intensity
 	progress  *scan.Progress
@@ -95,7 +100,8 @@ func New(bg context.Context, cfg Config, db *sql.DB) (*App, error) {
 	if cfg.KeepIndexes <= 0 {
 		cfg.KeepIndexes = 3
 	}
-	a := &App{cfg: cfg, db: db, bg: bg, stores: make(map[string]*meta.Store)}
+	a := &App{cfg: cfg, db: db, stores: make(map[string]*meta.Store)}
+	a.bg, a.stop = context.WithCancel(bg)
 	if err := os.MkdirAll(a.indexDir(), 0o700); err != nil {
 		return nil, err
 	}
@@ -123,7 +129,16 @@ func sameRoots(a, b []string) bool {
 	return slices.Equal(a, b)
 }
 
+// Close stops any scan in progress, waits for it to clean up after itself,
+// and closes the index. Without the wait, a scan could still be writing its
+// half-built index while the caller closes the database beneath it.
 func (a *App) Close() {
+	a.scanMu.Lock()
+	a.closed = true
+	a.scanMu.Unlock()
+	a.stop()
+	a.scans.Wait()
+
 	a.ixMu.Lock()
 	defer a.ixMu.Unlock()
 	if a.ix != nil {
@@ -217,13 +232,25 @@ func (a *App) StartScan(intensity scan.Intensity) error {
 // intensity sets how hard the walk leans on the disks.
 func (a *App) Scan(ctx context.Context, intensity scan.Intensity) (index.Info, error) {
 	a.scanMu.Lock()
+	if a.closed {
+		a.scanMu.Unlock()
+		return index.Info{}, ErrClosed
+	}
 	if a.scanning {
 		a.scanMu.Unlock()
 		return index.Info{}, ErrScanRunning
 	}
 	prog := &scan.Progress{}
 	a.scanning, a.intensity, a.progress, a.started, a.expected, a.lastErr = true, intensity, prog, time.Now(), 0, ""
+	a.scans.Add(1)
 	a.scanMu.Unlock()
+	defer a.scans.Done()
+
+	// The scan ends when its caller gives up or when the app is closed,
+	// whichever comes first.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(a.bg, cancel)()
 
 	info, warnings, err := a.scanOnce(ctx, prog, intensity)
 

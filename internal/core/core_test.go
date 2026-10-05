@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -430,6 +431,34 @@ func TestOpenContentCannotEscapeTheRoot(t *testing.T) {
 	os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(e.root, "share/plain.txt"))
 	if _, _, err := e.app.OpenContent(ctx, id); err == nil {
 		t.Fatal("followed a symlink that replaced the file")
+	}
+}
+
+// Closing must stop a scan in progress and wait until it has cleaned up, so
+// nothing is still writing to the data directory afterwards.
+func TestCloseStopsAndWaitsForAScan(t *testing.T) {
+	files := make(map[string]string)
+	for d := range 40 {
+		for f := range 50 {
+			files[filepath.Join("share", "d"+strconv.Itoa(d), "f"+strconv.Itoa(f))] = "x"
+		}
+	}
+	for range 20 { // the race this guards against is a matter of timing
+		e := newEnv(t, false, files)
+		if err := e.app.StartScan(scan.Aggressive); err != nil {
+			t.Fatal(err)
+		}
+		e.app.Close()
+		if st := e.app.ScanStatus(); st.Running {
+			t.Fatal("Close returned while a scan was still running")
+		}
+		left, _ := filepath.Glob(filepath.Join(e.app.Config().DataDir, "index", "*.tmp*"))
+		if len(left) != 0 {
+			t.Fatalf("a stopped scan left its unfinished index behind: %v", left)
+		}
+		if _, err := e.app.Scan(context.Background(), scan.Aggressive); !errors.Is(err, ErrClosed) {
+			t.Fatalf("scan after Close: %v", err)
+		}
 	}
 }
 
