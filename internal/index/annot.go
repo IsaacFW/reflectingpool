@@ -261,3 +261,23 @@ func (ix *Index) SkippedByShare(ctx context.Context) (map[int64]int64, error) {
 	}
 	return out, rows.Err()
 }
+
+// PrefixCounts counts, for each prefix, the entries that carry it.
+func (ix *Index) PrefixCounts(ctx context.Context) (map[string]int64, error) {
+	rows, err := ix.db.QueryContext(ctx, `SELECT prefixes FROM annot WHERE prefixes != ''`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]int64)
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err != nil {
+			return nil, err
+		}
+		for _, p := range strings.Split(strings.Trim(col, "|"), "|") {
+			out[p]++
+		}
+	}
+	return out, rows.Err()
+}

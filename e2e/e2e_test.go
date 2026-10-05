@@ -707,3 +707,46 @@ func TestReview(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+func TestAnnotations(t *testing.T) {
+	p := open(t)
+	p.signIn("annotations 01 signed in", "/annotations", has("h1", "Annotations"))
+	// The notes written by the tests before this one show in the coverage.
+	p.do("annotations 02 coverage", chromedp.WaitVisible(`//tr[.//span[.="inbox"]]//button[.="Review this share"]`))
+
+	// A prefix is added to the list, then put on an item from Space.
+	p.do("annotations 03 a prefix added",
+		chromedp.Click(has("button", "Add a prefix")),
+		chromedp.SendKeys(`input[aria-label="Prefix"]`, "KEEP"),
+		chromedp.SendKeys(`input[aria-label="What KEEP means"]`, "Do not delete"),
+		chromedp.Click(has("button", "Save the list")),
+		chromedp.WaitVisible(`//div[contains(@class,"toast")][contains(., "prefix list is saved")]`),
+	)
+	p.do("annotations 04 the prefix on an item",
+		chromedp.Navigate(base+"/space?path="+root+"/media/movies/alien.mkv"),
+		chromedp.WaitVisible(`#an-prefixes`),
+		chromedp.SendKeys(`#an-prefixes`, "KEEP"),
+		chromedp.Click(`//button[starts-with(normalize-space(.), "Save")]`),
+		chromedp.WaitVisible(row("alien.mkv")+`//span[contains(@class,"mark")][.="described"]`),
+		chromedp.Click(has("a", "Annotations")),
+		chromedp.WaitVisible(`//tr[.//input[@aria-label="Prefix"]]/td[3][normalize-space(.)="1"]`),
+	)
+
+	// A described item is deleted from the disk; after a scan its note is
+	// listed as missing and can be deleted.
+	if err := os.Remove(filepath.Join(root, "media/movies/alien.mkv")); err != nil {
+		t.Fatal(err)
+	}
+	p.do("annotations 05 a scan after the item has gone",
+		chromedp.Click(has("button", "Scan now")),
+		chromedp.Click(has("button", "Start scan")),
+		chromedp.WaitVisible(`//td[.//span[.="media/movies/alien.mkv"]]`),
+	)
+	p.do("annotations 06 the missing note deleted",
+		chromedp.Click(`//tr[.//span[.="media/movies/alien.mkv"]]//button[.="Delete"]`),
+		chromedp.WaitNotPresent(`//td[.//span[.="media/movies/alien.mkv"]]`),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}

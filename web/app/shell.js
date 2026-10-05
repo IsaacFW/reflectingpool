@@ -1,5 +1,6 @@
 // The frame around every screen: the top bar, the list of screens on the
 // left, and the strips that say what state the server is in.
+import { Annotations } from './annotations.js';
 import { api, ApiError, session } from './api.js';
 import { Brand, Setup, SignIn } from './auth.js';
 import { count, moment } from './format.js';
@@ -14,7 +15,6 @@ const COMING = {
   overview: 'Capacity, the shares with their size and how much of each is described, and where the last review stopped.',
   find: 'Search and filters across everything: by size, age, type, name and what is recorded.',
 
-  annotations: 'How much of each share is described, the prefix list, and notes whose item has gone missing.',
   storage: 'Datasets, compression and the space held by snapshots.',
   quarantine: 'Items set aside before deletion, and how to bring them back.',
 };
@@ -66,6 +66,7 @@ function Screen() {
   if (!status.index) return html`<${FirstRun} />`;
   if (screen === 'space') return html`<${Space} />`;
   if (screen === 'review') return html`<${Review} />`;
+  if (screen === 'annotations') return html`<${Annotations} />`;
   const known = SCREENS.find((s) => s.id === screen);
   return html`
     <div class="panel pad stack">

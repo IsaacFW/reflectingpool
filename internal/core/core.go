@@ -615,6 +615,8 @@ func (a *App) Storage(ctx context.Context) (StorageReport, error) {
 type Prefix struct {
 	Name    string `json:"name"`
 	Meaning string `json:"meaning"`
+	// Count is how many items carry the prefix. It is reported, never stored.
+	Count int64 `json:"count"`
 }
 
 func (a *App) Prefixes() ([]Prefix, error) {

@@ -802,3 +802,39 @@ func (r *reconciler) identity(row index.Row, old meta.Identity, path string) met
 	}
 	return id
 }
+
+// DeleteMissingAnnotation removes a note whose item was not found at the
+// last scan. Such a note has no entry to remove it through. A note whose
+// item exists is left alone: that one is removed from the item itself.
+func (a *App) DeleteMissingAnnotation(ctx context.Context, shareID int64, path string) error {
+	if a.cfg.ReadOnly {
+		return ErrReadOnly
+	}
+	a.writeMu.RLock()
+	defer a.writeMu.RUnlock()
+	return a.viewAt(ctx, func(ix *index.Index) error {
+		share, err := ix.Entry(ctx, shareID)
+		if err != nil {
+			return err
+		}
+		if share.ID != share.Share {
+			return index.ErrNotFound
+		}
+		sharePath, err := ix.EntryPath(ctx, shareID)
+		if err != nil {
+			return err
+		}
+		store := a.store(sharePath)
+		an, found, err := store.Get(path)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return index.ErrNotFound
+		}
+		if !an.Orphaned {
+			return InputError("this note belongs to an item that still exists; remove it from the item")
+		}
+		return store.Delete(path)
+	})
+}

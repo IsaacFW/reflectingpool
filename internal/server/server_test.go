@@ -537,6 +537,49 @@ func TestQueueToolsOverHTTP(t *testing.T) {
 	}
 }
 
+func TestPrefixCountsAndMissingNotes(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	h.signIn()
+	h.expect(200, h.request("PUT", "/api/prefixes", map[string]any{"prefixes": []map[string]string{{"name": "KEEP", "meaning": "Do not delete"}, {"name": "OLD", "meaning": ""}}}, nil))
+	h.expect(200, h.request("PUT", "/api/entries/"+h.id("big.mkv")+"/annotation", map[string]any{"prefixes": []string{"KEEP"}}, nil))
+	h.expect(200, h.request("PUT", "/api/entries/"+h.id("small.mkv")+"/annotation", map[string]any{"note": "about to vanish", "prefixes": []string{"KEEP"}}, nil))
+	r := h.expect(200, h.request("GET", "/api/prefixes", nil, nil))
+	list := r.body["prefixes"].([]any)
+	if list[0].(map[string]any)["count"] != float64(2) || list[1].(map[string]any)["count"] != float64(0) {
+		t.Errorf("prefix counts = %s", r.raw)
+	}
+
+	// An item deleted from the disk leaves its note behind after the next
+	// scan. It can then only be removed through the share.
+	media := h.id("media")
+	os.Remove(filepath.Join(h.root, "media/small.mkv"))
+	h.expect(202, h.request("POST", "/api/scan", nil, nil))
+	for range 200 {
+		if st := h.expect(200, h.request("GET", "/api/scan", nil, nil)); st.body["running"] == false {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	media = h.id("media") // the scan numbered everything afresh
+	path := "/api/shares/" + media + "/annotations?path="
+	if r := h.request("DELETE", path+"big.mkv", nil, nil); r.status != 400 {
+		t.Errorf("deleting the note of an item that exists through the share: %d %s", r.status, r.raw)
+	}
+	h.expect(404, h.request("DELETE", path+"nothing.mkv", nil, nil))
+	h.expect(400, h.request("DELETE", "/api/shares/"+media+"/annotations", nil, nil))
+	h.expect(200, h.request("DELETE", path+"small.mkv", nil, nil))
+	r = h.expect(200, h.request("GET", "/api/shares/"+media+"/annotations", nil, nil))
+	if all := r.body["annotations"].([]any); len(all) != 1 || all[0].(map[string]any)["path"] != "big.mkv" {
+		t.Errorf("notes left = %s", r.raw)
+	}
+
+	ro := newHarness(t, Options{}, true)
+	ro.signIn()
+	if r := ro.request("DELETE", "/api/shares/"+ro.id("media")+"/annotations?path=x", nil, nil); r.status != 403 {
+		t.Errorf("read-only delete: %d", r.status)
+	}
+}
+
 func TestSettingsAndSchedule(t *testing.T) {
 	h := newHarness(t, Options{}, false)
 	h.signIn()

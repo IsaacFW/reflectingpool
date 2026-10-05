@@ -8,7 +8,7 @@ export const SCREENS = [
   { id: 'space', label: 'Space', built: true },
   { id: 'find', label: 'Find' },
   { id: 'review', label: 'Review', built: true },
-  { id: 'annotations', label: 'Annotations' },
+  { id: 'annotations', label: 'Annotations', built: true },
   { id: 'storage', label: 'Storage' },
   { id: 'settings', label: 'Settings', built: true },
 ];
