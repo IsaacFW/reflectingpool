@@ -316,6 +316,8 @@ func TestTheInterface(t *testing.T) {
 	}
 	p.do("04 space after the first scan",
 		chromedp.Click(has("button", "Start scan")),
+		chromedp.WaitVisible(has("h1", "Overview")), // the front page, once there is an index
+		chromedp.Click(has("a", "Space")),
 		chromedp.WaitVisible(row("media")),
 	)
 	// Three thousand small files take more room on disk than their contents
@@ -806,6 +808,35 @@ func TestFind(t *testing.T) {
 	if got := p.text(`span[role=status]`); !strings.Contains(got, "3,004 items") && !strings.Contains(got, "3,005 items") && !strings.Contains(got, "3,006 items") {
 		t.Errorf("everything inside docs = %q", got)
 	}
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+func TestOverview(t *testing.T) {
+	p := open(t)
+	// The address with nothing after it opens on Overview.
+	p.signIn("overview 01 signed in", "/", has("h1", "Overview"))
+	p.do("overview 02 capacity and shares",
+		chromedp.WaitVisible(`.capbar`),
+		chromedp.WaitVisible(`//table//a[.="docs"]`),
+		chromedp.WaitVisible(`//div[contains(@class,"card")][.//h2[.="Last scan"]]//span[.="Files"]`),
+	)
+	// The largest share comes first, and its name leads into Space.
+	if got := p.text(`table.list tbody tr`); !strings.Contains(got, "docs") {
+		t.Errorf("first share on the overview = %q", got)
+	}
+	p.do("overview 03 into a share",
+		chromedp.Click(`//table//a[.="inbox"]`),
+		chromedp.WaitVisible(row("a.mkv")),
+	)
+	// The review stopped earlier in this browser is offered again... in this
+	// fresh browser there is none, so the card offers to start one.
+	p.do("overview 04 start a review",
+		chromedp.Click(has("a", "Overview")),
+		chromedp.Click(has("button", "Start a review")),
+		chromedp.WaitVisible(`.rv-top`),
+	)
 	if c := p.complaints(); len(c) > 0 {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}

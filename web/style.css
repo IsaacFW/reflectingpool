@@ -408,3 +408,18 @@ dialog.lightbox{width:auto;max-width:96vw;max-height:96vh;padding:8px;background
 .split.one{grid-template-columns:minmax(0,1fr)}
 .filters select,.builder select{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);padding:5px 8px}
 .scope>button:first-child{padding:0}
+
+/* overview */
+.hero{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.hero b{font-size:30px;font-weight:650;line-height:1.1}
+.capbar{display:flex;gap:2px;height:22px;border-radius:4px;overflow:hidden;background:var(--sunken);margin-bottom:8px}
+.capbar i{display:block;flex-basis:0;min-width:2px}
+.capbar i.free{background:transparent}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.card{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.card p{color:var(--ink-2);font-size:13px}
+.card .big{font-size:16px;font-weight:650;color:var(--ink)}
+.rows{display:flex;flex-direction:column;gap:4px;font-size:13px;width:100%}
+.rows>div{display:flex;justify-content:space-between;gap:10px}
+.rows>div>span:first-child{color:var(--ink-2)}
+

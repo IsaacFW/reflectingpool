@@ -66,6 +66,7 @@ export function date(/** @type {number} */ unix) {
 
 /** A length of time: "45 s", "3 min 20 s", "1 h 5 min". */
 export function duration(/** @type {number} */ seconds) {
+  if (seconds < 1) return 'under a second';
   const s = Math.round(seconds);
   if (s < 60) return `${s} s`;
   if (s < 3600) return `${Math.floor(s / 60)} min ${s % 60} s`;
