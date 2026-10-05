@@ -2,11 +2,12 @@
 // it. This is the sorted bar list of the design; the map above it comes later.
 import { api, FLAG, indexId, superseded } from './api.js';
 import { ago, bytes, count, date, plural } from './format.js';
-import { Inspector, Marks, typeClass } from './inspector.js';
+import { Inspector, Marks, Parts, parts, partsTitle } from './inspector.js';
 import { html, useEffect, useState } from './lib.js';
 import { VirtualList } from './list.js';
 import { FolderMap } from './map.js';
 import { go, href, prefs, route, setPref } from './state.js';
+import { FolderTree } from './tree.js';
 
 /** @typedef {import('./api.js').Entry} Entry */
 
@@ -157,9 +158,9 @@ export function Space() {
     const hollow = e.kind === 'file' && !e.counted;
     return html`
       <div class="nm" role="gridcell">${e.kind === 'dir' ? FOLDER : FILE}<span class="fs">${e.name}</span><${Marks} entry=${e} /></div>
-      <div class="c-bar" role="gridcell"><div class="bar">
+      <div class="c-bar" role="gridcell" title=${partsTitle(parts(e, mode))}><div class="bar">
         <div class=${'fill' + (hollow ? ' hollow' : '')} style=${{ width: `${share.toFixed(2)}%` }}>
-          ${!hollow && size > 0 && html`<i class=${typeClass(e)} style=${{ flexGrow: 1 }}></i>`}
+          ${!hollow && size > 0 && html`<${Parts} entry=${e} mode=${mode} />`}
         </div>
       </div></div>
       <div class="c-pct num" role="gridcell">${whole > 0 ? (share < 0.1 && size > 0 ? '<0.1%' : `${share.toFixed(share < 10 ? 1 : 0)}%`) : ''}</div>
@@ -185,6 +186,8 @@ export function Space() {
               <button type="button" aria-pressed=${mode === 'apparent' ? 'true' : 'false'} onClick=${() => setPref('size', 'apparent')}>Apparent</button>
             </div>
           </div>
+          <div class="ctl"><button class="btn small" type="button" aria-pressed=${prefs.value.tree ? "true" : "false"}
+            onClick=${() => setPref("tree", !prefs.value.tree)}>${prefs.value.tree ? "Hide the folder tree" : "Folder tree"}</button></div>
           ${folder && html`<div class="ctl"><span class="ctl-l">Map</span>
             <div class="seg" role="group" aria-label="How the map is drawn">
               ${[["map", "Areas"], ["icicle", "Bars"], ["off", "Off"]].map(([id, text]) => html`
@@ -200,10 +203,14 @@ export function Space() {
             <span class="legend-i"><i class="sw k-backup"></i>Archives and disk images</span>
             <span class="legend-i"><i class="sw k-image"></i>Images</span>
             <span class="legend-i"><i class="sw k-other"></i>Other files</span>
-            <span class="legend-i"><i class="sw k-plain"></i>Folders</span>
+            <span class="legend-i"><i class="sw k-plain"></i>Mixed, in the map</span>
           </div>
         </div>
       </div>
+      <div class=${prefs.value.tree ? "with-tree" : ""}>
+        ${prefs.value.tree && html`<${FolderTree} current=${folder ? folder.path || path : ""} roots=${rootNames} mode=${mode}
+          onGo=${(/** @type {string} */ p) => go("space", { ...keep, path: p })} onClose=${() => setPref("tree", false)} />`}
+        <div class="stack">
       ${folder && prefs.value.map !== "off" && html`
         <${FolderMap} folder=${folder} mode=${mode} form=${prefs.value.map} version=${`${index}|${rev}`}
           selectedId=${selected ? selected.id : 0} onSelect=${setSelected} onOpen=${open} />`}
@@ -219,6 +226,8 @@ export function Space() {
             empty="This folder is empty." />
         </div>
         ${shown && html`<${Inspector} id=${shown.id} rev=${rev} onOpen=${open} onChanged=${() => setRev((n) => n + 1)} />`}
+      </div>
+        </div>
       </div>
     </div>`;
 }

@@ -168,7 +168,8 @@ For the reference deployment, to be confirmed by benchmark:
 
 ## Open items
 
-- Step 3: every screen of the first release is built (Overview, Space with its map, Find, Review, Annotations, Storage, Settings). Left before the first release: generated previews for formats a browser cannot show ([issue #18](https://github.com/IsaacFW/reflectingpool/issues/18)).
-- The screens fall back where the index does not yet hold what the design asks for: folders are not coloured by type or age, search does not look inside notes, saved views and the last review are kept in the browser, there is no queue over skipped items, and a prefix cannot be renamed.
+- Step 3: every screen of the first release is built (Overview, Space with its map, Find, Review, Annotations, Storage, Settings). Generated previews are in: stills for films, pictures for RAW and HEIC photos.
+- The screens fall back where the index does not yet hold what the design asks for: folders are coloured by type but not by age, search does not look inside notes, saved views and the last review are kept in the browser, there is no queue over skipped items, and a prefix cannot be renamed.
+- An outside security review on 2026-10-05 found one high and four medium issues (`SECURITY_REVIEW.md`). None is fixed yet; the tests it added pass while the issues are present.
 - The interface has been run in headless Chromium only. Firefox and Safari, and PDF and video previews as a person sees them, are unchecked.
 - Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, saving annotations, and the review timings that `bench` now reports.

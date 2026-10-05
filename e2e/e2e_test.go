@@ -74,6 +74,9 @@ func tree(root string) {
 	if err := os.Link(filepath.Join(root, "media/movies/short.mp4"), filepath.Join(root, "docs/short-link.mp4")); err != nil {
 		panic(err)
 	}
+	write(filepath.Join(root, "media/words/art.txt"), make([]byte, 10))
+	write(filepath.Join(root, "media/words/party plans.txt"), make([]byte, 9000))
+	write(filepath.Join(root, "media/words/the art of war.txt"), make([]byte, 50))
 	write(filepath.Join(root, "inbox/a.mkv"), make([]byte, 300<<10))
 	write(filepath.Join(root, "inbox/b.mkv"), make([]byte, 200<<10))
 	write(filepath.Join(root, "inbox/c.mp4"), make([]byte, 100<<10))
@@ -81,6 +84,13 @@ func tree(root string) {
 	write(filepath.Join(root, "inbox/sub/deep2.txt"), make([]byte, 400))
 	write(filepath.Join(root, "inbox/x.txt"), make([]byte, 100))
 	write(filepath.Join(root, "inbox/last.txt"), make([]byte, 50))
+	if _, err := exec.LookPath("ffmpeg"); err == nil {
+		os.MkdirAll(filepath.Join(root, "media/movies"), 0o755)
+		if out, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=20:size=640x360:rate=5",
+			"-c:v", "mpeg2video", filepath.Join(root, "media/movies/clip.mpg")).CombinedOutput(); err != nil {
+			panic(fmt.Sprintf("making a test film: %v\n%s", err, out))
+		}
+	}
 	for i := range 3000 {
 		write(filepath.Join(root, fmt.Sprintf("docs/many/file-%04d.bin", i)), make([]byte, 3000-i))
 	}
@@ -208,8 +218,10 @@ func open(t *testing.T) *page {
 			}
 			// Being signed out is asked for on purpose: the page finds out
 			// whether there is a session by asking for it. A wrong password
-			// is tried on purpose too.
-			if strings.Contains(m.Text, "status of 401") || slices.ContainsFunc(p.allow, func(a string) bool { return strings.Contains(m.Text, a) }) {
+			// is tried on purpose too. And the films in the test pool are
+			// mostly empty files, of which no preview can be made: the server
+			// says so with a 422, and the page shows its reason.
+			if strings.Contains(m.Text, "status of 401") || strings.Contains(m.Text, "status of 422") || slices.ContainsFunc(p.allow, func(a string) bool { return strings.Contains(m.Text, a) }) {
 				continue
 			}
 			if m.IsException() || m.Type == "error" || m.Type == "warning" {
@@ -448,7 +460,7 @@ func TestTheInterface(t *testing.T) {
 	// A file the browser cannot play says so instead of showing a dead player
 	// (the test's films are empty), and a PDF opens in a frame of our own.
 	p.do("13b a film that will not play",
-		chromedp.WaitVisible(`//div[contains(@class,"pv-msg")][contains(., "could not be shown")]`),
+		chromedp.WaitVisible(`//div[contains(@class,"pv-msg")][contains(., "No preview")]`),
 	)
 	p.do("13c pdf",
 		chromedp.DoubleClick(row("taxes")),
@@ -770,6 +782,25 @@ func TestFind(t *testing.T) {
 		until(`[...document.querySelectorAll('.vl-row .nm .fs')].every((e) => e.textContent.startsWith('file-29'))`),
 	)
 
+	// The nearest match comes first while searching: the file called "art"
+	// before the larger files that merely contain those letters. A column
+	// header still orders by that column.
+	p.do("find 03b best match first",
+		chromedp.Navigate(base+"/find?kind=file&q=art"),
+		chromedp.WaitVisible(row("art.txt")),
+		until(`[...document.querySelectorAll('.vl-row .nm .fs')].map((e) => e.textContent).join('|') === 'art.txt|the art of war.txt|party plans.txt'`),
+		chromedp.WaitVisible(`//button[.="Best match first"][@aria-pressed="true"]`),
+		chromedp.Click(`//div[@role="columnheader"]/button[starts-with(., "Size")]`),
+		until(`document.querySelector('.vl-row .nm .fs')?.textContent === 'party plans.txt'`),
+		chromedp.Click(has("button", "Best match first")),
+		until(`document.querySelector('.vl-row .nm .fs')?.textContent === 'art.txt'`),
+	)
+	p.do("find 03c words in any order",
+		chromedp.Navigate(base+"/find?q=war+art"),
+		chromedp.WaitVisible(row("the art of war.txt")),
+		chromedp.WaitVisible(`//span[@role="status"][starts-with(., "1 item")]`),
+	)
+
 	// From a result to where it lives, and from a set of results to a review.
 	p.do("find 04 show in space",
 		chromedp.Navigate(base+"/find?kind=file&shares=docs&q=notes"),
@@ -918,6 +949,94 @@ func TestReviewFolders(t *testing.T) {
 		heading("taxes"),
 		chromedp.Click(`//button[starts-with(normalize-space(.), "Back to the item")]`),
 		heading("receipt.pdf"),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+// A folder's bar shows what the folder is made of, and the item column gives
+// the figures.
+func TestFoldersShowWhatTheyHold(t *testing.T) {
+	p := open(t)
+	p.signIn("types 01 signed in", "/space?path="+root+"/inbox", `.vl-row`)
+	// inbox holds films (most of its bytes) and text files: its row in the
+	// pool's list has a blue part for video, and the map colours it as video.
+	p.do("types 02 the pool",
+		chromedp.Navigate(base+"/space?path="+root),
+		chromedp.WaitVisible(row("inbox")+`//i[contains(@class,"k-video")]`),
+		chromedp.Click(row("inbox")),
+		chromedp.WaitVisible(`//aside//div[.="What is in it"]`),
+	)
+	if got := p.text(`//aside//div[.="What is in it"]/following-sibling::table`); !strings.Contains(got, "video") || !strings.Contains(got, "text") {
+		t.Errorf("what inbox holds = %q", got)
+	}
+	// docs is almost all small binary files: no single colour but the neutral one.
+	if n := eval[int](p, `document.querySelectorAll('.capbar i:not(.free)').length`); n != 0 {
+		t.Errorf("unexpected capacity bar on Space: %d", n)
+	}
+	p.do("types 03 overview by kind",
+		chromedp.Click(has("a", "Overview")),
+		chromedp.WaitVisible(`.capbar i.k-backup`), // the test pool is mostly .bin files, which count as disk images
+		chromedp.WaitVisible(`//span[contains(@class,"legend-i")][starts-with(., "Archives and disk images")]`),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+// The folder tree: out with a button, a level at a time, straight to a folder,
+// and open along the way to wherever the list is.
+func TestFolderTree(t *testing.T) {
+	p := open(t)
+	p.signIn("tree 01 signed in", "/space", `.vl-row`)
+	p.do("tree 02 out, with the shares in it",
+		chromedp.Click(has("button", "Folder tree")),
+		chromedp.WaitVisible(`//nav[@aria-label="Folders"]//button[contains(@class,"tree-name")][.="docs"]`),
+	)
+	p.do("tree 03 a level opened, and a folder gone to",
+		chromedp.Click(`button[aria-label="Open docs"]`),
+		chromedp.WaitVisible(`//nav[@aria-label="Folders"]//button[contains(@class,"tree-name")][.="taxes"]`),
+		chromedp.Click(`//nav[@aria-label="Folders"]//button[contains(@class,"tree-name")][.="taxes"]`),
+		chromedp.WaitVisible(row("receipt.pdf")),
+		chromedp.WaitVisible(`//div[contains(@class,"tree-row")][contains(@class,"cur")]/button[.="taxes"]`),
+	)
+	// Arriving somewhere by its address opens the tree down to it; the tree stays out across a reload.
+	p.do("tree 04 open along the way",
+		chromedp.Navigate(base+"/space?path="+root+"/inbox/sub"),
+		chromedp.WaitVisible(row("deep1.txt")),
+		chromedp.WaitVisible(`//div[contains(@class,"tree-row")][contains(@class,"cur")]/button[.="sub"]`),
+	)
+	p.do("tree 05 hidden again",
+		chromedp.Click(has("button", "Hide the folder tree")),
+		chromedp.WaitNotPresent(`nav[aria-label="Folders"]`),
+	)
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
+
+// A film in a format no browser plays is shown as stills made on the server,
+// which open large like any picture.
+func TestPreviews(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg is not installed here, so there is no film to preview")
+	}
+	p := open(t)
+	p.signIn("previews 01 signed in", "/space?path="+root+"/media/movies/clip.mpg", `.insp`)
+	p.do("previews 02 stills from a film",
+		chromedp.WaitVisible(`.insp .pv img`),
+		until(`(() => { const i = document.querySelector('.insp .pv img'); return i && i.complete && i.naturalWidth === 1292; })()`),
+		chromedp.WaitVisible(`//div[contains(@class,"pv-cap")][contains(., "8 stills")][contains(., "640×360")][contains(., "mpeg2video")]`),
+	)
+	if eval[bool](p, `!!document.evaluate('//button[.="Play it here"]', document).iterateNext()`) {
+		t.Error("a player is offered for a format the browser cannot play")
+	}
+	p.do("previews 03 large",
+		chromedp.Click(`.insp .pv-zoom`),
+		chromedp.WaitVisible(`dialog.lightbox[open] img`),
+		chromedp.KeyEvent(kb.Escape),
+		chromedp.WaitNotPresent(`dialog.lightbox`),
 	)
 	if c := p.complaints(); len(c) > 0 {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))

@@ -173,6 +173,10 @@ func cmdBench(args []string) error {
 				_, err := ix.Find(ctx, index.Filter{Name: "report"}, index.Sort{Key: "size", Desc: true}, 100, 0)
 				return err
 			}},
+			{"name search, best match first", func() error {
+				_, err := ix.Find(ctx, index.Filter{Name: "report"}, index.Sort{Key: "match"}, 100, 0)
+				return err
+			}},
 			{"files over 1 GiB not modified in 2 years", func() error {
 				_, err := ix.Find(ctx, index.Filter{Kind: "file", MinSize: 1 << 30, ModifiedBefore: time.Now().AddDate(-2, 0, 0).Unix()}, index.Sort{Key: "size", Desc: true}, 100, 0)
 				return err

@@ -17,6 +17,7 @@ import (
 
 	"github.com/IsaacFW/reflectingpool/internal/index"
 	"github.com/IsaacFW/reflectingpool/internal/meta"
+	"github.com/IsaacFW/reflectingpool/internal/preview"
 )
 
 // AnnotationInput is what a user can record about an item.
@@ -386,6 +387,9 @@ func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
 	err := a.View(func(ix *index.Index) error {
 		shares, err := ix.Shares(ctx)
 		if err != nil {
+			return err
+		}
+		if err := ix.FillTypes(ctx, shares); err != nil {
 			return err
 		}
 		if err := ix.FillPaths(ctx, shares); err != nil {
@@ -873,4 +877,50 @@ func writeFailure(err error) error {
 		return err
 	}
 	return &ShareReadOnlyError{Path: share}
+}
+
+// previewCache is how much room generated previews may take in the data
+// directory before the ones used longest ago are cleared out.
+const previewCache = 1 << 30
+
+// Preview returns the path of a picture of a file a browser cannot show by
+// itself: stills for a film, a JPEG for a HEIC or RAW photo.
+func (a *App) Preview(ctx context.Context, id int64) (string, preview.Info, error) {
+	var path string
+	var info preview.Info
+	err := a.viewAt(ctx, func(ix *index.Index) error {
+		row, err := ix.Entry(ctx, id)
+		if err != nil {
+			return err
+		}
+		if row.Kind != "file" {
+			return ErrNotFile
+		}
+		kind := preview.KindOf(row.Type, row.Ext)
+		if kind == preview.None {
+			return preview.ErrUnsupported
+		}
+		file, err := ix.EntryPath(ctx, id)
+		if err != nil {
+			return err
+		}
+		f, err := a.openFile(file)
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrGone
+		}
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		// Named by what the file is now, so a file that changes gets a new
+		// preview and one that only moves keeps the one it has.
+		var st unix.Stat_t
+		if err := unix.Fstat(int(f.Fd()), &st); err != nil {
+			return err
+		}
+		key := fmt.Sprintf("%x-%x-%x-%x", st.Dev, st.Ino, st.Mtim.Nano(), st.Size)
+		path, info, err = a.previews.Get(ctx, key, kind, f)
+		return err
+	})
+	return path, info, err
 }

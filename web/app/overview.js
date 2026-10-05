@@ -2,6 +2,7 @@
 // each is described, where the last review stopped, and the last scan.
 import { api, indexId, superseded } from './api.js';
 import { bytes, count, duration, moment, plural } from './format.js';
+import { Parts, parts } from './inspector.js';
 import { html, useEffect, useState } from './lib.js';
 import { defFromParams, lastParams, sentence } from './queue.js';
 import { scan, scanDialog } from './scan.js';
@@ -47,6 +48,12 @@ export function Overview() {
   const biggest = shares.reduce((n, s) => Math.max(n, sizeOf(s)), 0);
   const sorted = [...shares].sort((a, b) => sizeOf(b) - sizeOf(a));
   const cap = datasets && datasets.length ? capacity(datasets) : null;
+  // What the used space is, by kind of file, across all the shares.
+  /** @type {Record<string, number>} */
+  const kinds = {};
+  for (const s of shares) for (const p of parts(s, "disk")) kinds[p.cls] = (kinds[p.cls] || 0) + p.bytes;
+  const kindTotal = Object.values(kinds).reduce((a, b) => a + b, 0);
+  const KIND_NAMES = { "k-video": "Video", "k-backup": "Archives and disk images", "k-image": "Images", "k-other": "Other files", "k-plain": "Files" };
   const info = status && status.index;
   const last = status && status.history && status.history[0];
   const queue = lastParams();
@@ -62,12 +69,16 @@ export function Overview() {
         <div class="panel pad">
           <div class="hero"><b>${bytes(cap.free)}</b><span>free of ${bytes(cap.total)}</span></div>
           <div class="capbar" role="img" aria-label=${`${bytes(cap.used)} used by files, ${bytes(cap.snapshots)} held by snapshots, ${bytes(cap.free)} free`}>
-            <i class="k-plain" style=${{ flexGrow: cap.used }}></i>
+            ${kindTotal > 0
+              ? Object.entries(kinds).map(([cls, b]) => html`<i key=${cls} class=${cls} style=${{ flexGrow: (cap.used * b) / kindTotal }}></i>`)
+              : html`<i class="k-plain" style=${{ flexGrow: cap.used }}></i>`}
             ${cap.snapshots > 0 && html`<i class="k-snap" style=${{ flexGrow: cap.snapshots }}></i>`}
             <i class="free" style=${{ flexGrow: cap.free }}></i>
           </div>
           <div class="legend">
-            <span class="legend-i"><i class="sw k-plain"></i>Files, ${bytes(cap.used)}</span>
+            ${kindTotal > 0
+              ? Object.entries(kinds).map(([cls, b]) => html`<span class="legend-i" key=${cls}><i class=${"sw " + cls}></i>${KIND_NAMES[/** @type {keyof typeof KIND_NAMES} */ (cls)]}, ${bytes((cap.used * b) / kindTotal)}</span>`)
+              : html`<span class="legend-i"><i class="sw k-plain"></i>Files, ${bytes(cap.used)}</span>`}
             ${cap.snapshots > 0 && html`<span class="legend-i"><i class="sw k-snap"></i>Held by snapshots, ${bytes(cap.snapshots)}</span>`}
             <span class="legend-i"><i class="sw k-rest"></i>Free, ${bytes(cap.free)}</span>
           </div>
@@ -84,7 +95,7 @@ export function Overview() {
                 return html`
                   <tr class="pseudo" key=${s.id}>
                     <td><div class="nm"><a class="fs" href="/space" onClick=${open(s)}>${s.name}</a></div></td>
-                    <td><div class="bar"><div class="fill" style=${{ width: `${biggest > 0 ? (100 * sizeOf(s)) / biggest : 0}%` }}><i class="k-plain" style=${{ flexGrow: 1 }}></i></div></div></td>
+                    <td><div class="bar"><div class="fill" style=${{ width: `${biggest > 0 ? (100 * sizeOf(s)) / biggest : 0}%` }}><${Parts} entry=${s} mode=${mode} /></div></div></td>
                     <td class="num">${bytes(sizeOf(s))}</td>
                     <td class="num">${count(s.files)}</td>
                     <td><div class="meter" title=${`${plural(s.annotated, 'item', 'items')} described, ${count(s.skipped)} skipped`}><i style=${{ width: `${part}%` }}></i></div>

@@ -8,7 +8,8 @@ import { signal } from './lib.js';
  * @typedef {{id: number, parent: number, name: string, path?: string, kind: string, flags: number,
  *   size: number, disk: number, mtime: number, btime: number, atime: number, nlink: number, share: number,
  *   counted: boolean, ext: string, type: string, state: number, covered: boolean, files: number, dirs: number,
- *   max_mtime: number, max_btime: number, max_atime: number}} Entry
+ *   max_mtime: number, max_btime: number, max_atime: number,
+ *   types?: {type: string, size: number, disk: number, files: number}[]}} Entry
  * @typedef {{path: string, kind: string, note?: string, display_name?: string, prefixes?: string[],
  *   owner?: string, review_after?: string, skipped?: boolean, orphaned?: boolean, updated?: string}} Annotation
  */
@@ -98,4 +99,9 @@ export function loadShareAccess() {
   return api('GET', '/api/shares').then((r) => {
     lockedShares.value = new Map(r.shares.filter((/** @type {{writable: boolean}} */ s) => !s.writable).map((/** @type {{id: number, name: string}} */ s) => [s.id, s.name]));
   }).catch(() => {});
+}
+
+/** The address of a picture the server makes of a file the browser cannot show: stills for a film, a JPEG for a RAW or HEIC photo. */
+export function previewURL(/** @type {number} */ id) {
+  return `/api/entries/${id}/preview`;
 }

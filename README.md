@@ -2,7 +2,7 @@
 
 A discoverability suite for a NAS: see where the space goes, find what is no longer needed, and record what things are for. Built for Unraid servers that use ZFS pools; [SCOPE.md](SCOPE.md) has the full scope.
 
-**Status: the first release's screens are built.** From a browser you can scan the pool, see where the space goes (as a list and as a map), search everything, work through a review queue one item at a time, manage prefixes and see how much of each share is described, and look at the datasets behind it all. Still to come: generated previews for video and photo formats a browser cannot show, and the step 4 features (quarantine, staleness, naming, duplicates).
+**Status: the first release's screens are built.** From a browser you can scan the pool, see where the space goes (as a list and as a map), search everything, work through a review queue one item at a time, manage prefixes and see how much of each share is described, and look at the datasets behind it all. Films in any format ffmpeg reads are shown as a sheet of stills, and RAW and HEIC photos as pictures. Still to come: the step 4 features (quarantine, staleness, naming, duplicates).
 
 ## Run it on Unraid
 
@@ -136,8 +136,9 @@ Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's im
 ## What it writes
 
 - **In each share:** a `.reflection/` folder, created the first time something in that share is annotated or skipped. `annotations.jsonl` holds one line per annotated item and is the only copy of that information; `INDEX.md` is a readable summary regenerated from it. `skipped.jsonl` lists the items passed over in a review, one path per line; a skipped item that is renamed or moved returns to review, and deleting the file returns them all at the next scan. All of it takes the share's owner and permissions.
-- **In the data directory:** the scan index (rebuilt by every scan; the last three are kept), the app database and the TLS key. All of it can be deleted without losing annotations.
+- **In the data directory:** the scan index (rebuilt by every scan; the last three are kept), the app database, the TLS key, and generated previews (up to 1 GB; the ones used longest ago are cleared out first). All of it can be deleted without losing annotations.
 - **Nowhere else.** A scan reads metadata only and never opens a file. File contents are read in two cases: a 128 KiB fingerprint when you annotate a file, and when you preview one.
+- **Previews are made when you look at an item**, never during a scan, at most two at a time and at the lowest priority.
 
 ## Security
 
@@ -145,6 +146,7 @@ Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's im
 - **Login.** One admin account. Passwords are hashed with Argon2id; sessions use an HttpOnly, SameSite=Strict cookie plus a CSRF token on every change. Repeated failures from one address are locked out for 30 seconds, doubling up to 15 minutes.
 - **Forgotten password.** `docker exec reflectingpool reflectingpool reset-admin` deletes the account; a new setup code then appears in the log.
 - **Previews.** Files on a share are untrusted. HTML, XML and scripts are served as plain text and SVG is sandboxed, so a file cannot run as a page of this site.
+- **Generated previews.** Films and HEIC photos are decoded by ffmpeg, which runs as `nobody`, not root. It is handed the one file as an open descriptor and allowed no other input, so a crafted file cannot make it read anything else; it has a time and a memory limit. RAW photos are not decoded: the JPEG the camera embedded is copied out. A bug in a decoder could still run code inside the container as `nobody`.
 
 ## API
 
@@ -157,6 +159,10 @@ Everything but the first three routes needs the session cookie; anything but `GE
 
 **Errors** are `{"error": "message for a person", "code": "stable_code"}`. Act on the code.
 
+**A folder row carries `types`**: what is inside it at any depth, by kind of file, as `{"type", "size", "disk", "files"}` for each kind. It is worked out from the index after each scan.
+
+**Saving a note or a skip is refused with `403`, code `share_read_only`,** when the share cannot be written to, which on Unraid usually means the pool's path is mapped read-only.
+
 | Route | Purpose |
 |---|---|
 | `GET /api/health` | Liveness, and whether setup is still needed |
@@ -166,12 +172,13 @@ Everything but the first three routes needs the session cookie; anything but `GE
 | `GET`, `PUT /api/settings` | The optional daily scan: on or off, time of day, intensity |
 | `GET /api/entries/lookup?path=` | The entry at a path |
 | `GET /api/storage` | Datasets with usage and, where available, snapshot accounting |
-| `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown |
-| `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix, or everything `under=` a folder; `sort=` size, disk, name, modified, created, age or files |
+| `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown. `kind=dir` gives the folders only, for the folder tree |
+| `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix, or everything `under=` a folder; `sort=` size, disk, name, modified, created, age or files. A `name` of several words finds names holding all of them, in any order, and `sort=match` then puts the closest names first |
 | `GET /api/entries/{id}` | One item with its annotation and hardlinks |
 | `PUT`, `DELETE /api/entries/{id}/annotation` | Record or remove an annotation. Saving with every field empty skips the item; deleting returns it to review |
 | `GET /api/entries/{id}/content` | File contents for the preview pane, with range requests |
-| `GET /api/shares`, `GET /api/shares/{id}/annotations` | Annotation coverage per share; everything recorded in one |
+| `GET /api/entries/{id}/preview` | A picture made of a file the browser cannot show: stills from a film, a JPEG from a RAW or HEIC photo. `?info=1` gives the film's length, size and codec |
+| `GET /api/shares`, `GET /api/shares/{id}/annotations` | Annotation coverage per share, and whether it is `writable`; everything recorded in one |
 | `DELETE /api/shares/{id}/annotations?path=` | Remove a note whose item was not found at the last scan |
 | `GET`, `PUT /api/prefixes` | The prefix list; reading it also gives how many items carry each prefix |
 | `POST /api/queue` | The next items of a review, grouped and ordered by the keys you give |

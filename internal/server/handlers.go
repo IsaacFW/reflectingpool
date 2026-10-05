@@ -4,6 +4,7 @@ import (
 	"context"
 	"mime"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/IsaacFW/reflectingpool/internal/auth"
@@ -147,7 +148,8 @@ func (s *Server) shareAnnotations(w http.ResponseWriter, r *http.Request, _ auth
 	writeJSON(w, http.StatusOK, map[string]any{"annotations": all})
 }
 
-// tree lists one directory's children for the space breakdown. With no id it
+// tree lists one directory's children for the space breakdown, or only the
+// folders among them with kind=dir. With no id it
 // lists the scan roots.
 func (s *Server) tree(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	q := &query{v: r.URL.Query()}
@@ -168,11 +170,22 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 			if entry.Path, err = ix.EntryPath(ctx, id); err != nil {
 				return err
 			}
-			resp["entry"] = entry
+			one := []index.Row{entry}
+			if err := ix.FillTypes(ctx, one); err != nil {
+				return err
+			}
+			resp["entry"] = one[0]
 		}
-		children, total, err := ix.Children(ctx, id, q.sort(), limit, offset)
+		list := ix.Children
+		if q.v.Get("kind") == "dir" { // folders only, for the folder tree
+			list = ix.ChildDirs
+		}
+		children, total, err := list(ctx, id, q.sort(), limit, offset)
+		if err != nil {
+			return err
+		}
 		resp["children"], resp["total"] = children, total
-		return err
+		return ix.FillTypes(ctx, children)
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -201,6 +214,9 @@ func (s *Server) entries(w http.ResponseWriter, r *http.Request, _ auth.Session)
 	err := s.app.View(func(ix *index.Index) error {
 		var err error
 		if rows, err = ix.Find(ctx, f, q.sort(), limit, offset); err != nil {
+			return err
+		}
+		if err = ix.FillTypes(ctx, rows); err != nil {
 			return err
 		}
 		if totals, err = ix.Count(ctx, f); err != nil {
@@ -289,7 +305,11 @@ func (s *Server) entry(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 		if entry.Path, err = ix.EntryPath(ctx, id); err != nil {
 			return err
 		}
-		resp["entry"] = entry
+		one := []index.Row{entry}
+		if err := ix.FillTypes(ctx, one); err != nil {
+			return err
+		}
+		resp["entry"] = one[0]
 		if entry.Nlink > 1 && !entry.IsDir() {
 			links, err := ix.ByInode(ctx, entry.Dev, entry.Ino)
 			if err != nil {
@@ -438,8 +458,10 @@ func (s *Server) queue(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	var res index.QueueResult
 	err := s.app.View(func(ix *index.Index) error {
 		var err error
-		res, err = ix.Queue(ctx, req.spec())
-		return err
+		if res, err = ix.Queue(ctx, req.spec()); err != nil {
+			return err
+		}
+		return ix.FillTypes(ctx, res.Items)
 	})
 	if err != nil {
 		s.fail(w, err)
@@ -519,5 +541,39 @@ func (s *Server) content(w http.ResponseWriter, r *http.Request, _ auth.Session)
 		h.Set("Content-Security-Policy", "sandbox; frame-ancestors 'self'")
 	}
 	h.Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, "", st.ModTime(), f)
+}
+
+// preview serves a generated picture of a file the browser cannot show by
+// itself, or with info=1 what is known about it (a film's length, size and
+// codec). The picture is made the first time it is asked for and kept.
+func (s *Server) preview(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	id, err := pathID(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	path, info, err := s.app.Preview(r.Context(), id)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if r.URL.Query().Get("info") != "" {
+		writeJSON(w, http.StatusOK, info)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
 	http.ServeContent(w, r, "", st.ModTime(), f)
 }

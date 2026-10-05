@@ -14,7 +14,9 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}"
 
 FROM alpine:${ALPINE_VERSION}
 # zfs: the `zfs list` command, used read-only when /dev/zfs is passed in.
-RUN apk add --no-cache zfs ca-certificates tzdata
+# ffmpeg: stills from films and pictures from HEIC photos, for previews. It is
+# run without root rights and reads only the one file it is handed.
+RUN apk add --no-cache zfs ca-certificates tzdata ffmpeg
 COPY --from=build /out/reflectingpool /usr/local/bin/reflectingpool
 ENV RP_DATA=/data
 VOLUME /data

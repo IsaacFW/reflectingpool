@@ -17,6 +17,7 @@ import (
 
 	"github.com/IsaacFW/reflectingpool/internal/index"
 	"github.com/IsaacFW/reflectingpool/internal/meta"
+	"github.com/IsaacFW/reflectingpool/internal/preview"
 	"github.com/IsaacFW/reflectingpool/internal/scan"
 	"github.com/IsaacFW/reflectingpool/internal/storage"
 )
@@ -79,6 +80,8 @@ type App struct {
 	lastErr   string
 	warnings  []string
 
+	previews *preview.Maker
+
 	storesMu sync.Mutex
 	stores   map[string]*meta.Store
 
@@ -114,6 +117,7 @@ func New(bg context.Context, cfg Config, db *sql.DB) (*App, error) {
 		cfg.KeepIndexes = 3
 	}
 	a := &App{cfg: cfg, db: db, stores: make(map[string]*meta.Store)}
+	a.previews = preview.New(filepath.Join(cfg.DataDir, "previews"), previewCache)
 	a.bg, a.stop = context.WithCancel(bg)
 	if err := os.MkdirAll(a.indexDir(), 0o700); err != nil {
 		return nil, err
