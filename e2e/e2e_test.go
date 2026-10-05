@@ -74,6 +74,9 @@ func tree(root string) {
 	if err := os.Link(filepath.Join(root, "media/movies/short.mp4"), filepath.Join(root, "docs/short-link.mp4")); err != nil {
 		panic(err)
 	}
+	write(filepath.Join(root, "media/words/art.txt"), make([]byte, 10))
+	write(filepath.Join(root, "media/words/party plans.txt"), make([]byte, 9000))
+	write(filepath.Join(root, "media/words/the art of war.txt"), make([]byte, 50))
 	write(filepath.Join(root, "inbox/a.mkv"), make([]byte, 300<<10))
 	write(filepath.Join(root, "inbox/b.mkv"), make([]byte, 200<<10))
 	write(filepath.Join(root, "inbox/c.mp4"), make([]byte, 100<<10))
@@ -768,6 +771,25 @@ func TestFind(t *testing.T) {
 		chromedp.SendKeys(`input[type=search]`, "file-29"),
 		chromedp.WaitVisible(`//span[@role="status"][starts-with(., "100 items")]`),
 		until(`[...document.querySelectorAll('.vl-row .nm .fs')].every((e) => e.textContent.startsWith('file-29'))`),
+	)
+
+	// The nearest match comes first while searching: the file called "art"
+	// before the larger files that merely contain those letters. A column
+	// header still orders by that column.
+	p.do("find 03b best match first",
+		chromedp.Navigate(base+"/find?kind=file&q=art"),
+		chromedp.WaitVisible(row("art.txt")),
+		until(`[...document.querySelectorAll('.vl-row .nm .fs')].map((e) => e.textContent).join('|') === 'art.txt|the art of war.txt|party plans.txt'`),
+		chromedp.WaitVisible(`//button[.="Best match first"][@aria-pressed="true"]`),
+		chromedp.Click(`//div[@role="columnheader"]/button[starts-with(., "Size")]`),
+		until(`document.querySelector('.vl-row .nm .fs')?.textContent === 'party plans.txt'`),
+		chromedp.Click(has("button", "Best match first")),
+		until(`document.querySelector('.vl-row .nm .fs')?.textContent === 'art.txt'`),
+	)
+	p.do("find 03c words in any order",
+		chromedp.Navigate(base+"/find?q=war+art"),
+		chromedp.WaitVisible(row("the art of war.txt")),
+		chromedp.WaitVisible(`//span[@role="status"][starts-with(., "1 item")]`),
 	)
 
 	// From a result to where it lives, and from a set of results to a review.

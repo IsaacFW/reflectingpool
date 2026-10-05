@@ -60,7 +60,8 @@ export function Find() {
   const { params } = route.value;
   const index = indexId.value;
   const mode = prefs.value.size;
-  const sort = params.sort || 'size';
+  // While something is searched for, the nearest matches come first unless a column is chosen.
+  const sort = params.sort || (params.q ? 'match' : 'size');
   const desc = params.desc ? params.desc === '1' : sort !== 'name';
   const [shares, setShares] = useState(/** @type {{id: number, name: string}[]} */ ([]));
   const [scope, setScope] = useState(/** @type {{index: string, key: string, query: string} | null} */ (null));
@@ -215,7 +216,7 @@ export function Find() {
           ${select('older', AGES, 'Not changed for')}
           ${select('state', STATES, 'Recorded')}
           ${known.length > 0 && select('prefix', [['', 'any'], ...known.map((p) => [p.name, p.name])], 'Prefix')}
-          <label class="grow">Name contains
+          <label class="grow">Words in the name
             <input type="search" value=${text} onInput=${(/** @type {Event} */ e) => setText(/** @type {HTMLInputElement} */ (e.target).value)}
               onKeyDown=${(/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter') set({ q: text || undefined }); }} /></label>
         </div>
@@ -230,6 +231,8 @@ export function Find() {
                 ? `${plural(totals.total, 'item', 'items')}${totals.size !== null && totals.size !== undefined ? `, ${bytes(totals.size)} ${mode === 'disk' ? 'on disk' : 'apparent'}` : ''}`
                 : 'Searching…'}</span>
               <span class="row">
+                ${params.q && html`<button class="chipb" type="button" aria-pressed=${sort === "match" ? "true" : "false"} title="Whole words first, then the start of a word, then anywhere in a name"
+                  onClick=${() => go("find", { ...params, sort: undefined, desc: undefined }, true)}>Best match first</button>`}
                 ${filtered && html`<button class="btn small" type="button" onClick=${() => go('find')}>Clear the filters</button>`}
                 <button class="btn small" type="button" disabled=${!totals || totals.total === 0} onClick=${() => go('review', reviewParams())}>Review these results</button>
               </span>
