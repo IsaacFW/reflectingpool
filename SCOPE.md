@@ -81,6 +81,7 @@ Agreed scope as of 2026-10-04. A change to this document is a change to scope.
 - Progress is a true percentage, from the per-dataset file count ZFS reports.
 - Excluded by default: `.zfs` directories and Docker's per-layer datasets.
 - A benchmark and diagnostics command.
+- Scan intensity: before starting a scan by hand, the user chooses aggressive, balanced or low impact. What the modes do, and the default for scheduled scans, are tracked in [issue #6](https://github.com/IsaacFW/reflectingpool/issues/6).
 
 ### 8. Security
 
@@ -139,7 +140,8 @@ For the reference deployment, to be confirmed by benchmark:
 - Confirmed on the reference server on 2026-10-04 (Unraid 7.3.2, OpenZFS 2.4.3 with the image's 2.4.4 tools):
   - an unprivileged container with `/dev/zfs` lists datasets and is refused when it tries to create a snapshot;
   - a share mapped on its own is recognised as its ZFS dataset;
-  - the scan's on-disk total matches ZFS's own figure for the dataset, and its entry count matches ZFS's object count to within 0.1%.
+  - the scan's on-disk total matches ZFS's own figure for the dataset, and its entry count matches ZFS's object count to within 0.1%;
+  - a whole pool of about 1.1 million entries across 13 datasets scanned in 1 to 4 minutes with 357 MiB peak memory, measured while a large transfer was writing to the pool, so an idle pool should be no slower. Every measured query is within its target except name search at 130 to 145 ms ([issue #7](https://github.com/IsaacFW/reflectingpool/issues/7)).
 
 ## Out of scope
 
@@ -154,4 +156,4 @@ For the reference deployment, to be confirmed by benchmark:
 ## Open items
 
 - Presentation and frontend stack: decided at the design evaluation.
-- Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, saving annotations, and a scan at full scale.
+- Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, and saving annotations.
