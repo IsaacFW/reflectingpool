@@ -146,3 +146,7 @@ go run ./cmd/reflectingpool bench /some/directory  # speed on any tree
 ```
 
 The tests run on any Linux filesystem. Nothing in them needs ZFS, which also means the ZFS-specific paths (`zfs list` through `/dev/zfs`, dataset boundaries, snapshot accounting) are covered by parsers and fixtures only until checked on a real pool.
+
+## Licence
+
+[MIT](LICENSE).

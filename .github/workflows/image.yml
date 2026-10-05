@@ -44,6 +44,7 @@ jobs:
             --build-arg VERSION="$version" \
             --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
             --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --label org.opencontainers.image.licenses=MIT \
             -t "$image:$branch" -t "$image:$version" .
           docker push "$image:$branch"
           docker push "$image:$version"

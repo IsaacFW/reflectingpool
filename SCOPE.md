@@ -23,6 +23,7 @@ Agreed scope as of 2026-10-04. A change to this document is a change to scope.
 | Deleting | Quarantine first, purge later |
 | ZFS access | Optional and read-only. The tool never creates or destroys snapshots and never changes properties |
 | Frontend | Presentation is decided by a design evaluation before any UI code is written |
+| Licence | MIT |
 
 ## Features
 
@@ -151,4 +152,3 @@ For the reference deployment, to be confirmed by benchmark:
 
 - Presentation and frontend stack: decided at the design evaluation.
 - Whether the `/dev/zfs` passthrough behaves as expected on the reference server.
-- Licence: none chosen; the repository is private.
