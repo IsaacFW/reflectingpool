@@ -159,6 +159,10 @@ Everything but the first three routes needs the session cookie; anything but `GE
 
 **Errors** are `{"error": "message for a person", "code": "stable_code"}`. Act on the code.
 
+**A folder row carries `types`**: what is inside it at any depth, by kind of file, as `{"type", "size", "disk", "files"}` for each kind. It is worked out from the index after each scan.
+
+**Saving a note or a skip is refused with `403`, code `share_read_only`,** when the share cannot be written to, which on Unraid usually means the pool's path is mapped read-only.
+
 | Route | Purpose |
 |---|---|
 | `GET /api/health` | Liveness, and whether setup is still needed |
@@ -168,13 +172,13 @@ Everything but the first three routes needs the session cookie; anything but `GE
 | `GET`, `PUT /api/settings` | The optional daily scan: on or off, time of day, intensity |
 | `GET /api/entries/lookup?path=` | The entry at a path |
 | `GET /api/storage` | Datasets with usage and, where available, snapshot accounting |
-| `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown |
-| `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix, or everything `under=` a folder; `sort=` size, disk, name, modified, created, age or files |
+| `GET /api/tree?id=` | One folder's children with rolled-up sizes, for the space breakdown. `kind=dir` gives the folders only, for the folder tree |
+| `GET /api/entries?…` | Find files and folders by kind, share, type, size, age, name, annotation state or prefix, or everything `under=` a folder; `sort=` size, disk, name, modified, created, age or files. A `name` of several words finds names holding all of them, in any order, and `sort=match` then puts the closest names first |
 | `GET /api/entries/{id}` | One item with its annotation and hardlinks |
 | `PUT`, `DELETE /api/entries/{id}/annotation` | Record or remove an annotation. Saving with every field empty skips the item; deleting returns it to review |
 | `GET /api/entries/{id}/content` | File contents for the preview pane, with range requests |
 | `GET /api/entries/{id}/preview` | A picture made of a file the browser cannot show: stills from a film, a JPEG from a RAW or HEIC photo. `?info=1` gives the film's length, size and codec |
-| `GET /api/shares`, `GET /api/shares/{id}/annotations` | Annotation coverage per share; everything recorded in one |
+| `GET /api/shares`, `GET /api/shares/{id}/annotations` | Annotation coverage per share, and whether it is `writable`; everything recorded in one |
 | `DELETE /api/shares/{id}/annotations?path=` | Remove a note whose item was not found at the last scan |
 | `GET`, `PUT /api/prefixes` | The prefix list; reading it also gives how many items carry each prefix |
 | `POST /api/queue` | The next items of a review, grouped and ordered by the keys you give |
