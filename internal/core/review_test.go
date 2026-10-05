@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/IsaacFW/reflectingpool/internal/index"
 	"github.com/IsaacFW/reflectingpool/internal/meta"
@@ -328,5 +332,47 @@ func TestSkipsAtScale(t *testing.T) {
 	t.Logf("start-up with %d skips: %s", n, time.Since(start).Round(time.Millisecond))
 	if q := again.queue(spec); q.Remaining != 0 || q.Total != int64(n) {
 		t.Errorf("after a restart: %d of %d left", q.Remaining, q.Total)
+	}
+}
+
+// A pool mapped into the container read-only must say so in words. It used
+// to surface as "internal error; see the log".
+func TestAShareThatCannotBeWrittenSaysSo(t *testing.T) {
+	cause := &fs.PathError{Op: "mkdir", Path: "/mnt/pool/media/" + meta.Dir, Err: unix.EROFS}
+	var ro *ShareReadOnlyError
+	if err := writeFailure(fmt.Errorf("saving: %w", cause)); !errors.As(err, &ro) || ro.Path != "/mnt/pool/media" || !strings.Contains(err.Error(), "Read/Write") {
+		t.Errorf("read-only filesystem: %v", err)
+	}
+	// A failure to read an item, or any other failure, is left as it is.
+	other := &fs.PathError{Op: "open", Path: "/mnt/pool/media/film.mkv", Err: unix.EACCES}
+	if err := writeFailure(other); err != error(other) {
+		t.Errorf("an unrelated failure was rewritten: %v", err)
+	}
+	if writeFailure(nil) != nil {
+		t.Error("no failure became one")
+	}
+
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere, so the rest needs an ordinary user")
+	}
+	e := newEnv(t, false, map[string]string{"share/a.txt": "a", "open/b.txt": "b"})
+	e.scan()
+	locked := filepath.Join(e.root, "share")
+	os.Chmod(locked, 0o555)
+	defer os.Chmod(locked, 0o755)
+	if _, err := e.app.PutAnnotation(context.Background(), e.id("share/a.txt"), AnnotationInput{Note: "x"}); !errors.As(err, &ro) || ro.Path != locked {
+		t.Errorf("saving into a share that cannot be written: %v", err)
+	}
+	if _, err := e.app.PutAnnotation(context.Background(), e.id("share/a.txt"), AnnotationInput{}); !errors.As(err, &ro) {
+		t.Errorf("skipping in a share that cannot be written: %v", err)
+	}
+	shares, err := e.app.Shares(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range shares {
+		if s.Writable != (s.Name == "open") {
+			t.Errorf("%s: writable = %v", s.Name, s.Writable)
+		}
 	}
 }

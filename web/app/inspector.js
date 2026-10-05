@@ -1,7 +1,7 @@
 // The right-hand column: whatever item is selected, with its facts, a
 // preview and the form that records what it is for. Review uses the same
 // preview and form.
-import { api, contentURL, FLAG, indexId, session, STATE, superseded } from './api.js';
+import { api, contentURL, FLAG, indexId, lockedShares, session, STATE, superseded } from './api.js';
 import { ago, bytes, count, date, plural } from './format.js';
 import { html, useEffect, useRef, useState } from './lib.js';
 import { prefs, say } from './state.js';
@@ -152,7 +152,8 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
   const [form, setForm] = useState(formFrom(annotation));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const readOnly = !!(session.value && session.value.read_only);
+  const shareLocked = lockedShares.value.has(entry.share);
+  const readOnly = !!(session.value && session.value.read_only) || shareLocked;
   const empty = isBlank(form);
 
   useEffect(() => { if (!prefixList.value) loadPrefixes(); }, []);
@@ -192,9 +193,9 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
   return html`
     <form class="stack" onSubmit=${save}
       onKeyDown=${(/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save(e); }}>
-      ${readOnly && html`<p class="hint">Read-only mode: nothing can be recorded.</p>`}
+      ${readOnly && html`<p class="hint">${shareLocked ? "This share is mapped into the container read-only, so nothing can be recorded here." : "Read-only mode: nothing can be recorded."}</p>`}
       ${annotation && annotation.skipped && html`<p class="hint">This item was skipped in a review.</p>`}
-      <${Fields} form=${form} onChange=${setForm} disabled=${off} />
+      <${Fields} form=${form} onChange=${setForm} disabled=${off} folder=${entry.kind === "dir"} />
       ${error && html`<p class="err" role="alert">${error}</p>`}
       <div class="actions">
         <button class="btn primary" type="submit" disabled=${off || empty}>Save <span class="kbd">Ctrl+Enter</span></button>

@@ -1,7 +1,7 @@
 // The frame around every screen: the top bar, the list of screens on the
 // left, and the strips that say what state the server is in.
 import { Annotations } from './annotations.js';
-import { api, ApiError, session } from './api.js';
+import { api, ApiError, indexId, loadShareAccess, lockedShares, session } from './api.js';
 import { Brand, Setup, SignIn } from './auth.js';
 import { Find } from './find.js';
 import { count, moment } from './format.js';
@@ -86,6 +86,11 @@ function Main() {
   useEffect(() => {
     watchScan();
   }, []);
+  const index = indexId.value;
+  useEffect(() => {
+    if (index) loadShareAccess();
+  }, [index]);
+  const locked = [...lockedShares.value.values()];
   return html`
     <div class="shell">
       <header class="top">
@@ -99,6 +104,10 @@ function Main() {
       ${s && s.read_only && html`
         <div class="banner" role="status"><div><span class="st"><i aria-hidden="true">i</i>Read-only mode.</span>
           <span> Browsing works. Nothing can be recorded, and nothing on the pool is changed.</span></div></div>`}
+      ${s && !s.read_only && locked.length > 0 && html`
+        <div class="banner warn" role="status"><div><span class="st"><i aria-hidden="true">!</i>Nothing can be recorded in ${locked.join(", ")}.</span>
+          <span> ${locked.length === 1 ? "It is" : "They are"} mapped into the container read-only. Browsing works. To write notes, give the path read-write access
+            (in Unraid: Read/Write - Slave) and restart the container.</span></div></div>`}
       ${status && !status.running && status.last_error && html`
         <div class="banner warn" role="status"><div><span class="st"><i aria-hidden="true">!</i>The last scan did not finish.</span>
           <span> Reason: ${status.last_error}. ${status.index ? 'You are looking at the index before it.' : ''}</span></div>

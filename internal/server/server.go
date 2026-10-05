@@ -254,6 +254,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnauthorized, "invalid_credentials"
 	case errors.Is(err, auth.ErrSetupCode):
 		status, code = http.StatusForbidden, "bad_setup_code"
+	case errors.As(err, new(*core.ShareReadOnlyError)):
+		status, code = http.StatusForbidden, "share_read_only"
 	case errors.Is(err, core.ErrReadOnly):
 		status, code = http.StatusForbidden, "read_only"
 	case errors.Is(err, index.ErrNotFound):
