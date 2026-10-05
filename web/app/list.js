@@ -31,6 +31,8 @@ function maxPx() {
  * @property {() => void} onUp Backspace or Alt+Up
  * @property {(row: T) => boolean} [startAt] the row to select when the list first loads, if it is near the top
  * @property {string} label what the list is, for screen readers
+ * @property {number} [rowHeight] px; must match the height the stylesheet gives the rows
+ * @property {string} [className] added to the list, for a different set of columns
  * @property {unknown} empty shown when the list has no rows
  */
 
@@ -39,6 +41,7 @@ function maxPx() {
  * @param {ListProps<T>} props
  */
 export function VirtualList(props) {
+  const rowH = props.rowHeight || ROW;
   const box = useRef(/** @type {HTMLDivElement | null} */ (null));
   // What has been fetched. Kept outside state: pages arrive one by one and
   // the list is redrawn by hand when they do.
@@ -109,13 +112,13 @@ export function VirtualList(props) {
   }
 
   const total = s.total;
-  const rowsInView = Math.max(1, Math.floor((viewH - HEAD) / ROW));
-  const fullPx = Math.max(0, total) * ROW;
+  const rowsInView = Math.max(1, Math.floor((viewH - HEAD) / rowH));
+  const fullPx = Math.max(0, total) * rowH;
   const scaled = fullPx > maxPx();
   const bodyPx = scaled ? maxPx() : fullPx;
   const maxScroll = Math.max(1, bodyPx + HEAD - viewH);
   // The (fractional) index of the row at the top of the view.
-  const top = scaled ? (scrollTop / maxScroll) * Math.max(0, total - rowsInView) : scrollTop / ROW;
+  const top = scaled ? (scrollTop / maxScroll) * Math.max(0, total - rowsInView) : scrollTop / rowH;
   const first = Math.max(0, Math.floor(top) - 4);
   const last = Math.min(Math.max(0, total), Math.ceil(top) + rowsInView + 4);
 
@@ -154,10 +157,10 @@ export function VirtualList(props) {
       if (next < Math.ceil(top) || next >= Math.floor(top) + rowsInView) {
         el.scrollTop = (next / Math.max(1, total - rowsInView)) * maxScroll;
       }
-    } else if (next * ROW < el.scrollTop) {
-      el.scrollTop = next * ROW;
-    } else if ((next + 1) * ROW > el.scrollTop + viewH - HEAD) {
-      el.scrollTop = (next + 1) * ROW - (viewH - HEAD);
+    } else if (next * rowH < el.scrollTop) {
+      el.scrollTop = next * rowH;
+    } else if ((next + 1) * rowH > el.scrollTop + viewH - HEAD) {
+      el.scrollTop = (next + 1) * rowH - (viewH - HEAD);
     }
   }
 
@@ -182,7 +185,7 @@ export function VirtualList(props) {
   const rows = [];
   for (let i = first; i < last; i++) {
     const row = rowAt(i);
-    const y = `${scaled ? scrollTop + (i - top) * ROW : i * ROW}px`;
+    const y = `${scaled ? scrollTop + (i - top) * rowH : i * rowH}px`;
     if (!row) {
       rows.push(html`<div class="vl-row wait" key=${'w' + i} style=${{ top: y }} role="row" aria-rowindex=${i + 2}><span>…</span></div>`);
       continue;
@@ -198,7 +201,7 @@ export function VirtualList(props) {
   }
 
   return html`
-    <div class="vl" ref=${box} tabindex="0" role="grid" aria-label=${props.label} aria-rowcount=${Math.max(0, total) + 1}
+    <div class=${"vl" + (props.className ? " " + props.className : "")} ref=${box} tabindex="0" role="grid" aria-label=${props.label} aria-rowcount=${Math.max(0, total) + 1}
       onScroll=${(/** @type {Event} */ e) => move({ scrollTop: /** @type {HTMLElement} */ (e.currentTarget).scrollTop })} onKeyDown=${onKey}>
       <div class="vl-head" role="row" aria-rowindex="1">${props.head}</div>
       ${error ? html`

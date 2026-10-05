@@ -396,3 +396,15 @@ a{color:var(--accent)}
 dialog.lightbox{width:auto;max-width:96vw;max-height:96vh;padding:8px;background:var(--screen);color:var(--on-screen);border-color:var(--screen);cursor:zoom-out}
 .lightbox img{display:block;max-width:calc(96vw - 16px);max-height:calc(96vh - 48px);margin:0 auto}
 .lightbox .pv-cap{color:var(--on-screen);text-align:center;padding-top:6px}
+
+/* find: taller rows with the folder under the name, and its own columns */
+.vl.tall .vl-row{height:44px}
+.vl.find .vl-head,.vl.find .vl-row{grid-template-columns:minmax(0,1fr) 110px 96px 96px 112px}
+.vl.find{height:calc(100dvh - 330px)}
+@media (max-width:1250px){
+  .vl.find .vl-head,.vl.find .vl-row{grid-template-columns:minmax(0,1fr) 80px 96px}
+  .vl.find .c-type,.vl.find .c-age{display:none}
+}
+.split.one{grid-template-columns:minmax(0,1fr)}
+.filters select,.builder select{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r);padding:5px 8px}
+.scope>button:first-child{padding:0}

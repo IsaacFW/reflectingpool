@@ -6,7 +6,7 @@ import { signal } from './lib.js';
 export const SCREENS = [
   { id: 'overview', label: 'Overview' },
   { id: 'space', label: 'Space', built: true },
-  { id: 'find', label: 'Find' },
+  { id: 'find', label: 'Find', built: true },
   { id: 'review', label: 'Review', built: true },
   { id: 'annotations', label: 'Annotations', built: true },
   { id: 'storage', label: 'Storage' },
