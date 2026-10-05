@@ -841,3 +841,19 @@ func TestOverview(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+func TestStorage(t *testing.T) {
+	p := open(t)
+	p.signIn("storage 01 signed in", "/storage", has("h1", "Storage"))
+	// The test runs on an ordinary filesystem: one row, no ZFS figures.
+	p.do("storage 02 the filesystem under the pool", chromedp.WaitVisible(`table.list tbody tr`))
+	if got := p.text(`table.list tbody tr`); !strings.Contains(got, "B") {
+		t.Errorf("dataset row = %q", got)
+	}
+	if got := p.text(`.sh .sub`); !strings.Contains(got, "free of") {
+		t.Errorf("summary = %q", got)
+	}
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}

@@ -11,11 +11,11 @@ import { Review } from './review.js';
 import { scan, scanDialog, ScanDialog, ScanStrip, watchScan } from './scan.js';
 import { Settings } from './settings.js';
 import { Space } from './space.js';
+import { Storage } from './storage.js';
 import { applyTheme, go, href, route, SCREENS, toast } from './state.js';
 
 const COMING = {
 
-  storage: 'Datasets, compression and the space held by snapshots.',
   quarantine: 'Items set aside before deletion, and how to bring them back.',
 };
 
@@ -62,6 +62,7 @@ function Screen() {
   const { screen } = route.value;
   const status = scan.value;
   if (screen === 'settings') return html`<${Settings} />`;
+  if (screen === 'storage') return html`<${Storage} />`;
   if (!status) return html`<p class="muted">Loading…</p>`;
   if (!status.index) return html`<${FirstRun} />`;
   if (screen === 'space') return html`<${Space} />`;
