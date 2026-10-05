@@ -14,7 +14,7 @@ export const SCREENS = [
 ];
 
 /**
- * @typedef {{size: 'disk' | 'apparent', units: 'decimal' | 'binary', theme: 'system' | 'light' | 'dark'}} Prefs
+ * @typedef {{size: 'disk' | 'apparent', units: 'decimal' | 'binary', theme: 'system' | 'light' | 'dark', map: 'map' | 'icicle' | 'off'}} Prefs
  * @typedef {{screen: string, params: Record<string, string>}} Route
  */
 
@@ -22,7 +22,7 @@ export const SCREENS = [
 // them. Storage can be unavailable (a private window); the defaults then
 // simply apply each time.
 /** @type {Prefs} */
-const defaults = { size: 'disk', units: 'decimal', theme: 'system' };
+const defaults = { size: 'disk', units: 'decimal', theme: 'system', map: 'map' };
 
 function loadPrefs() {
   try {

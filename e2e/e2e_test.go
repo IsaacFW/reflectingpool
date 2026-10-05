@@ -857,3 +857,47 @@ func TestStorage(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+func TestMap(t *testing.T) {
+	p := open(t)
+	p.signIn("map 01 signed in", "/space", `.map`)
+	// The pool's shares as areas, with what is inside the large ones drawn
+	// within them. Everything drawn stays inside the map.
+	p.do("map 02 areas", until(`document.querySelectorAll('.map .cell').length >= 3 && document.querySelectorAll('.map .grp').length >= 1`))
+	if out := eval[int](p, `(() => { const m = document.querySelector('.map').getBoundingClientRect(); return [...document.querySelectorAll('.map .cell, .map .grp')].filter((c) => { const b = c.getBoundingClientRect(); return b.left < m.left - 1 || b.right > m.right + 1 || b.top < m.top - 1 || b.bottom > m.bottom + 1; }).length; })()`); out != 0 {
+		t.Errorf("%d areas are drawn outside the map", out)
+	}
+	// Areas are in proportion: the largest share covers the part of the map
+	// that the list says it holds of the pool.
+	area := eval[float64](p, `(() => { const m = document.querySelector('.map').getBoundingClientRect(); const g = [...document.querySelectorAll('.map .grp')].map((e) => e.getBoundingClientRect()).sort((a, b) => b.width * b.height - a.width * a.height)[0]; return g.width * g.height / (m.width * m.height); })()`)
+	share := eval[float64](p, `parseFloat(document.querySelector('.vl-row .c-pct').textContent) / 100`)
+	if share < 0.3 || area < share-0.06 || area > share+0.06 {
+		t.Errorf("the largest share covers %.2f of the map, and the list says it holds %.2f of the pool", area, share)
+	}
+	// Clicking selects, in the map and in the item column alike; a double click opens.
+	p.do("map 03 select and open",
+		chromedp.Click(`//div[contains(@class,"grp-h")][starts-with(., "docs")]`),
+		chromedp.WaitVisible(`//aside//h3[.="docs"]`),
+		chromedp.DoubleClick(`//div[contains(@class,"grp-h")][starts-with(., "docs")]`),
+		chromedp.WaitVisible(row("many")),
+		until(`location.search.includes('docs')`),
+	)
+	// The other form, and off; the choice is remembered.
+	p.do("map 04 bars",
+		chromedp.Click(has("button", "Bars")),
+		until(`document.querySelector('.map').getBoundingClientRect().height < 120 && document.querySelectorAll('.map .cell').length >= 1`),
+	)
+	p.do("map 05 off, and still off after a reload",
+		chromedp.Click(has("button", "Off")),
+		chromedp.WaitNotPresent(`.map`),
+		chromedp.Reload(),
+		chromedp.WaitVisible(row("many")),
+	)
+	if eval[bool](p, `!!document.querySelector('.map')`) {
+		t.Error("the map came back after a reload although it was turned off")
+	}
+	p.do("map 06 on again", chromedp.Click(has("button", "Areas")), chromedp.WaitVisible(`.map .cell`))
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}
