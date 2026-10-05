@@ -16,13 +16,76 @@ const IMAGES = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg'
 const VIDEOS = ['mp4', 'm4v', 'webm', 'mov', 'mkv', 'ogv'];
 const AUDIO = ['mp3', 'flac', 'wav', 'ogg', 'opus', 'm4a', 'aac'];
 
-/** The colour class for what a file's bytes are. Three hues and a neutral: the most that stay apart for colour-blind readers. */
+// The colours bytes can take: three hues and a neutral, the most that stay
+// apart for colour-blind readers when any two can end up side by side.
+/** @type {Record<string, string>} */
+const CLASS_OF = { video: 'k-video', archive: 'k-backup', 'disk-image': 'k-backup', image: 'k-image' };
+const CLASS_NAMES = { 'k-video': 'video', 'k-backup': 'archives and disk images', 'k-image': 'images', 'k-other': 'other files', 'k-plain': 'not known yet' };
+
+/**
+ * What an item's bytes are, as coloured parts for a bar: one part for a
+ * file, and for a folder one part for each kind of thing it holds.
+ * @param {Entry} e
+ * @param {'disk' | 'apparent'} mode
+ * @returns {{cls: string, bytes: number}[]}
+ */
+export function parts(e, mode) {
+  const own = mode === 'disk' ? e.disk : e.size;
+  if (e.kind !== 'dir') return [{ cls: CLASS_OF[e.type] || 'k-other', bytes: own }];
+  // An index from before folders were summed by type has nothing to go on.
+  if (!e.types || !e.types.length) return [{ cls: 'k-plain', bytes: own }];
+  /** @type {Record<string, number>} */
+  const sums = { 'k-video': 0, 'k-backup': 0, 'k-image': 0, 'k-other': 0 };
+  for (const t of e.types) sums[CLASS_OF[t.type] || 'k-other'] += mode === 'disk' ? t.disk : t.size;
+  const total = Object.values(sums).reduce((a, b) => a + b, 0);
+  // A sliver too thin to see is left out; the item column has the exact figures.
+  return Object.entries(sums).filter(([, b]) => total > 0 && b / total >= 0.03).map(([cls, bytes]) => ({ cls, bytes }));
+}
+
+/** The parts in words, for a bar's tooltip: "video 62%, images 30%". */
+export function partsTitle(/** @type {{cls: string, bytes: number}[]} */ ps) {
+  const total = ps.reduce((n, p) => n + p.bytes, 0);
+  if (!total || ps.length < 2) return '';
+  return ps.map((p) => `${CLASS_NAMES[/** @type {keyof typeof CLASS_NAMES} */ (p.cls)]} ${Math.round((100 * p.bytes) / total)}%`).join(', ');
+}
+
+/** One colour for an item: its type, or for a folder the kind that holds more than half of it. */
 export function typeClass(/** @type {Entry} */ e) {
-  if (e.kind === 'dir') return 'k-plain'; // folders are neutral until the index sums types per folder
-  if (e.type === 'video') return 'k-video';
-  if (e.type === 'archive' || e.type === 'disk-image') return 'k-backup';
-  if (e.type === 'image') return 'k-image';
-  return 'k-other';
+  const ps = parts(e, 'apparent');
+  const total = ps.reduce((n, p) => n + p.bytes, 0);
+  const main = ps.find((p) => p.bytes * 2 > total);
+  return e.kind === 'dir' ? (main ? main.cls : 'k-plain') : ps[0].cls;
+}
+
+/** The parts as the insides of a bar. */
+export function Parts(/** @type {{entry: Entry, mode: 'disk' | 'apparent'}} */ { entry, mode }) {
+  const ps = parts(entry, mode).filter((p) => p.bytes > 0);
+  const total = ps.reduce((n, p) => n + p.bytes, 0) || 1;
+  return ps.map((p) => html`<i key=${p.cls} class=${p.cls} style=${{ flexGrow: ((1000 * p.bytes) / total).toFixed(1) }}></i>`);
+}
+
+/** What a folder is made of, type by type, with the exact figures. */
+function MadeOf(/** @type {{entry: Entry, mode: 'disk' | 'apparent'}} */ { entry, mode }) {
+  const types = entry.types || [];
+  if (entry.kind !== 'dir' || !types.length) return null;
+  const sizeOf = (/** @type {{size: number, disk: number}} */ t) => (mode === 'disk' ? t.disk : t.size);
+  const sorted = [...types].sort((a, b) => sizeOf(b) - sizeOf(a));
+  const largest = sizeOf(sorted[0]) || 1;
+  return html`
+    <div>
+      <div class="insp-kind">What is in it</div>
+      <table class="mini">
+        <tbody>
+          ${sorted.map((t) => html`
+            <tr key=${t.type}>
+              <td>${t.type}</td>
+              <td class="b"><div class="bar"><div class="fill" style=${{ width: `${(100 * sizeOf(t)) / largest}%` }}><i class=${CLASS_OF[t.type] || 'k-other'} style=${{ flexGrow: 1 }}></i></div></div></td>
+              <td class="s num">${bytes(sizeOf(t))}</td>
+              <td class="s num">${count(t.files)}</td>
+            </tr>`)}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 /** The first part of a text file, fetched as text and shown as text. */
@@ -257,6 +320,7 @@ export function Inspector({ id, rev, onOpen, onChanged, onShow }) {
         ${isDir && html`<button class="btn small" type="button" onClick=${() => onOpen(e)}>Open this folder</button>`}
         ${onShow && html`<button class="btn small" type="button" onClick=${() => onShow(e)}>Show in Space</button>`}
       </div>
+      <${MadeOf} entry=${e} mode=${mode} />
       <${Preview} entry=${e} />
       <${AnnotationForm} key=${`${e.id}:${annotation ? annotation.updated || "skipped" : ""}`} entry=${e} annotation=${annotation} onSaved=${onChanged} />
     </aside>`;

@@ -17,6 +17,9 @@ const (
 	CatSubtitle
 )
 
+// numCats is how many categories there are.
+const numCats = CatSubtitle + 1
+
 var catNames = []string{"other", "folder", "video", "audio", "image", "document", "archive", "disk-image", "text", "subtitle"}
 
 func CatName(cat int) string {

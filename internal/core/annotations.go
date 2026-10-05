@@ -388,6 +388,9 @@ func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
 		if err != nil {
 			return err
 		}
+		if err := ix.FillTypes(ctx, shares); err != nil {
+			return err
+		}
 		if err := ix.FillPaths(ctx, shares); err != nil {
 			return err
 		}

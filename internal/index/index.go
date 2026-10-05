@@ -63,6 +63,8 @@ type Row struct {
 	MaxMtime int64 `json:"max_mtime"`
 	MaxBtime int64 `json:"max_btime"`
 	MaxAtime int64 `json:"max_atime"`
+	// Types is what a folder is made of, largest first. Set by FillTypes.
+	Types []TypeTotal `json:"types,omitempty"`
 
 	Ino       uint64 `json:"-"`
 	Dev       uint64 `json:"-"`
@@ -150,6 +152,13 @@ func Open(path string) (*Index, error) {
 	if _, err := db.Exec(upgrades); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("index %s: %w", path, err)
+	}
+	var filled string
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'dir_types'`).Scan(&filled); errors.Is(err, sql.ErrNoRows) {
+		if err := fillDirTypes(db); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("index %s: summing file types per folder: %w", path, err)
+		}
 	}
 	// Ages are measured from the scan, not from today: the index describes
 	// the pool as it was then.
