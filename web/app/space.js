@@ -5,6 +5,7 @@ import { ago, bytes, count, date, plural } from './format.js';
 import { Inspector, Marks, typeClass } from './inspector.js';
 import { html, useEffect, useState } from './lib.js';
 import { VirtualList } from './list.js';
+import { FolderMap } from './map.js';
 import { go, href, prefs, route, setPref } from './state.js';
 
 /** @typedef {import('./api.js').Entry} Entry */
@@ -128,8 +129,11 @@ export function Space() {
     return { rows: t.children, total: t.total };
   };
 
-  const open = (/** @type {Entry} */ e) => {
-    if (e.kind === 'dir') go('space', { ...keep, path: folder ? (folder.path === '/' ? '' : folder.path) + '/' + e.name : e.name });
+  // via is the folder between, when the map opens something one level further down.
+  const open = (/** @type {Entry} */ e, /** @type {Entry} */ via) => {
+    if (e.kind !== 'dir') return;
+    const base = folder ? (folder.path === '/' ? '' : folder.path) + '/' : '';
+    go('space', { ...keep, path: base + (via ? via.name + '/' : '') + e.name });
   };
   const up = () => {
     if (folder) go('space', { ...keep, path: parentOf(folder.path || path, rootNames) || undefined, sel: folder.name });
@@ -181,6 +185,12 @@ export function Space() {
               <button type="button" aria-pressed=${mode === 'apparent' ? 'true' : 'false'} onClick=${() => setPref('size', 'apparent')}>Apparent</button>
             </div>
           </div>
+          ${folder && html`<div class="ctl"><span class="ctl-l">Map</span>
+            <div class="seg" role="group" aria-label="How the map is drawn">
+              ${[["map", "Areas"], ["icicle", "Bars"], ["off", "Off"]].map(([id, text]) => html`
+                <button type="button" key=${id} aria-pressed=${prefs.value.map === id ? "true" : "false"} onClick=${() => setPref("map", /** @type {"map" | "icicle" | "off"} */ (id))}>${text}</button>`)}
+            </div>
+          </div>`}
           ${folder && html`<div class="ctl">
             <button class="btn small" type="button" onClick=${() => go("find", { under: folder.path })}>Find inside this folder</button>
             <button class="btn small" type="button" onClick=${() => go("review", { under: folder.path })}>Review what is inside</button>
@@ -194,6 +204,9 @@ export function Space() {
           </div>
         </div>
       </div>
+      ${folder && prefs.value.map !== "off" && html`
+        <${FolderMap} folder=${folder} mode=${mode} form=${prefs.value.map} version=${`${index}|${rev}`}
+          selectedId=${selected ? selected.id : 0} onSelect=${setSelected} onOpen=${open} />`}
       <div class="split">
         <div class="panel">
           <${VirtualList}

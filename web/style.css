@@ -423,3 +423,18 @@ dialog.lightbox{width:auto;max-width:96vw;max-height:96vh;padding:8px;background
 .rows>div{display:flex;justify-content:space-between;gap:10px}
 .rows>div>span:first-child{color:var(--ink-2)}
 
+
+/* the map above the list in Space */
+.map{position:relative;height:300px;overflow:hidden;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);margin-bottom:8px;user-select:none}
+.cell{position:absolute;overflow:hidden;font-size:11.5px;line-height:1.25;padding:3px 5px;cursor:pointer;border-radius:2px}
+.cell b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cell.k-snap b,.cell.k-snap span{display:inline-block;background:var(--panel);color:var(--ink);padding:0 3px;border-radius:2px;max-width:100%}
+.cell.sel,.grp-h.sel{box-shadow:inset 0 0 0 2px var(--panel),inset 0 0 0 4px var(--ink)}
+.cell:hover{filter:brightness(1.08)}
+.grp{position:absolute;background:var(--sunken);border-radius:3px}
+.grp-h{position:absolute;left:0;right:0;top:0;height:18px;font-size:11.5px;padding:1px 5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;border-radius:3px}
+.map-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink-3);padding:16px;text-align:center}
+.map-note{font-size:12.5px;color:var(--ink-3);margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;justify-content:space-between}
+@media (max-width:700px){.map{height:220px}}
+.cell.k-plain{color:var(--panel)}
