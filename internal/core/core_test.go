@@ -527,6 +527,15 @@ func TestServerAdoptsAnIndexBuiltElsewhere(t *testing.T) {
 	if server.app.IndexID() != before {
 		t.Error("adopting twice switched indexes")
 	}
+
+	// What is annotated here while the other process scans is not in the
+	// index that process builds. Adopting it must not lose sight of it.
+	cli.scan()
+	server.annotate("share/a.txt", "written while the scan ran")
+	server.app.adoptLatest()
+	if server.app.IndexID() != cli.app.IndexID() || server.state("share/a.txt")&index.StateNote == 0 {
+		t.Errorf("after adopting: index %q, state %d", server.app.IndexID(), server.state("share/a.txt"))
+	}
 }
 
 func TestStopScan(t *testing.T) {

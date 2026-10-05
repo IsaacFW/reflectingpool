@@ -185,7 +185,7 @@ func (s *Server) tree(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 func (s *Server) entries(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	q := &query{v: r.URL.Query()}
 	f := index.Filter{
-		Kind: q.v.Get("kind"), Shares: q.ids("share"), Types: q.list("type"), Exts: q.list("ext"),
+		Kind: q.v.Get("kind"), Under: q.int("under", 0), Shares: q.ids("share"), Types: q.list("type"), Exts: q.list("ext"),
 		MinSize: q.int("min_size", 0), MaxSize: q.int("max_size", 0), ModifiedBefore: q.int("modified_before", 0),
 		Name: q.v.Get("name"), State: q.v.Get("state"), Prefix: q.v.Get("prefix"),
 	}
@@ -372,37 +372,45 @@ func (s *Server) putPrefixes(w http.ResponseWriter, r *http.Request, _ auth.Sess
 	s.getPrefixes(w, r, auth.Session{})
 }
 
+// queueDef is a review queue as a client describes it.
+type queueDef struct {
+	Filter         index.Filter `json:"filter"`
+	Groups         []string     `json:"groups"`
+	Order          string       `json:"order"`
+	Desc           *bool        `json:"desc"`
+	Limit          int          `json:"limit"`
+	Offset         int          `json:"offset"`
+	ExcludeCovered bool         `json:"exclude_covered"`
+}
+
+func (d queueDef) spec() index.QueueSpec {
+	if d.Order == "" {
+		d.Order = "size"
+	}
+	// Largest first for size; oldest first for the time keys; A to Z for names.
+	desc := d.Order == "size"
+	if d.Desc != nil {
+		desc = *d.Desc
+	}
+	return index.QueueSpec{
+		Filter: d.Filter, Groups: d.Groups, Order: index.Sort{Key: d.Order, Desc: desc},
+		Limit: min(d.Limit, 200), Offset: d.Offset, ExcludeCovered: d.ExcludeCovered,
+	}
+}
+
 // queue serves the next items of a review. The client sends the same request
 // after each item it annotates or skips; finished items drop out on their own.
 func (s *Server) queue(w http.ResponseWriter, r *http.Request, _ auth.Session) {
-	var req struct {
-		Filter index.Filter `json:"filter"`
-		Groups []string     `json:"groups"`
-		Order  string       `json:"order"`
-		Desc   *bool        `json:"desc"`
-		Limit  int          `json:"limit"`
-	}
+	var req queueDef
 	if err := decode(r, &req); err != nil {
 		s.fail(w, err)
 		return
-	}
-	if req.Order == "" {
-		req.Order = "size"
-	}
-	// Largest first for size, oldest first for age, A to Z for names.
-	desc := req.Order == "size"
-	if req.Desc != nil {
-		desc = *req.Desc
-	}
-	spec := index.QueueSpec{
-		Filter: req.Filter, Groups: req.Groups,
-		Order: index.Sort{Key: req.Order, Desc: desc}, Limit: min(req.Limit, 200),
 	}
 	ctx := r.Context()
 	var res index.QueueResult
 	err := s.app.View(func(ix *index.Index) error {
 		var err error
-		res, err = ix.Queue(ctx, spec)
+		res, err = ix.Queue(ctx, req.spec())
 		return err
 	})
 	if err != nil {
@@ -410,6 +418,27 @@ func (s *Server) queue(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// queueSkip passes over everything left in one group of a review queue. The
+// group is named by the values the queue gave for it, so a request that
+// arrives late cannot skip whichever group happens to be current by then.
+func (s *Server) queueSkip(w http.ResponseWriter, r *http.Request, _ auth.Session) {
+	var req struct {
+		queueDef
+		Group []any `json:"group"`
+	}
+	if err := decode(r, &req); err != nil {
+		s.fail(w, err)
+		return
+	}
+	// Like a single save, this finishes even if the browser has moved on.
+	skipped, err := s.app.SkipGroup(context.WithoutCancel(r.Context()), req.spec(), req.Group)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"skipped": skipped})
 }
 
 // Types a browser can show directly and which cannot run script in our origin.

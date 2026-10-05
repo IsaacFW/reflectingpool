@@ -55,6 +55,17 @@ CREATE INDEX entries_ino ON entries(dev, ino);
 CREATE INDEX entries_group ON entries(share, kind, cat, size DESC);
 `
 
+// Parts of the format that came after the first indexes were built. Open
+// creates them in an index that lacks them, so that an upgrade does not make
+// the index on disk useless until the next scan.
+const upgrades = `
+-- Every folder whose contents count as reviewed because the folder, or one
+-- above it, has been described. A cache like annot; see covered.go.
+CREATE TABLE IF NOT EXISTS covered(dir INTEGER PRIMARY KEY);
+-- Folders only, for walking a subtree without touching its files.
+CREATE INDEX IF NOT EXISTS entries_dirs ON entries(parent) WHERE kind = 1;
+`
+
 const (
 	entryCols   = 23
 	rowsPerStmt = 64
@@ -241,7 +252,7 @@ func (b *Builder) Finish(info Info, datasets []Dataset) (string, error) {
 	}
 	// ANALYZE costs about a tenth of the index build and keeps the grouped
 	// queries off full-table plans.
-	if _, err := b.db.Exec(indexes + "ANALYZE;"); err != nil {
+	if _, err := b.db.Exec(indexes + upgrades + "ANALYZE;"); err != nil {
 		b.Abort()
 		return "", fmt.Errorf("building indexes: %w", err)
 	}

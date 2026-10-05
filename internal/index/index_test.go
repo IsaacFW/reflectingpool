@@ -32,7 +32,7 @@ func build(t *testing.T, root string) *Index {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := b.Finish(Info{Roots: []string{root}, Files: res.Files, Size: res.Size}, nil)
+	path, err := b.Finish(Info{Started: time.Now(), Roots: []string{root}, Files: res.Files, Dirs: res.Dirs, Size: res.Size}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
