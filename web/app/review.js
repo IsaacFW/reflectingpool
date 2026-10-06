@@ -1,7 +1,7 @@
 // Review: one item at a time, its preview beside it, in the order the user
 // chose. Saving never waits: the next item shows at once and the write
 // finishes behind it.
-import { api, ApiError, indexId, lockedShares, session, superseded } from './api.js';
+import { api, ApiError, indexId, lockedShares, session, shareProblems, superseded } from './api.js';
 import { BLANK, bodyOf, Fields, formFrom, isBlank, loadPrefixes, prefixList, sameForm } from './annotate.js';
 import { ago, bytes, count, plural } from './format.js';
 import { Preview } from './inspector.js';
@@ -568,7 +568,7 @@ function Session({ def }) {
             </div></div></div>`}
         ${halted && html`<div class="note-line warn" role="alert">Three saves in a row did not go through, so the review has stopped moving on. Deal with the one above to carry on.</div>`}
         ${readOnly && html`<div class="note-line">Read-only mode. You can look through the queue; nothing is recorded.</div>`}
-        ${!readOnly && locked && html`<div class="note-line warn">This share is mapped into the container read-only, so nothing can be recorded for this item. Ctrl+Enter moves on.</div>`}
+        ${!readOnly && locked && html`<div class="note-line warn">${(head && shareProblems.value.get(head.share)) || "This share is mapped into the container read-only, so nothing can be recorded for this item."} Ctrl+Enter moves on.</div>`}
         ${lookingBack && html`<div class="note-line">Looking back at an item from this visit. Change it and save, or leave it as it is.</div>`}
         ${line && html`<div class="note-line" role="status">${line}</div>`}
         ${target && html`

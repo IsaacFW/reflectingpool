@@ -1042,3 +1042,38 @@ func TestPreviews(t *testing.T) {
 		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
 	}
 }
+
+// A share whose .reflection has been replaced by a link is shown as such,
+// and nothing can be recorded in it. The share listing finds the problem when
+// the page loads; no scan is needed.
+func TestAShareWithALinkInPlaceOfItsNotes(t *testing.T) {
+	meta := filepath.Join(root, "inbox", ".reflection")
+	kept := false
+	if _, err := os.Lstat(meta); err == nil {
+		kept = true
+		if err := os.Rename(meta, meta+".kept"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink("../docs", meta); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		os.Remove(meta)
+		if kept {
+			os.Rename(meta+".kept", meta)
+		}
+	})
+	p := open(t)
+	p.signIn("unsafe 01 signed in", "/space?path="+root+"/inbox/last.txt", `.insp`)
+	p.do("unsafe 02 the banner and the form say what was found",
+		chromedp.WaitVisible(`//div[contains(@class,"banner")][contains(., "symbolic link")][contains(., "inbox/.reflection")]`),
+		chromedp.WaitVisible(`//p[contains(@class,"hint")][contains(., "symbolic link")]`),
+	)
+	if !eval[bool](p, `document.querySelector('#an-note').disabled`) {
+		t.Error("the note field is not disabled")
+	}
+	if c := p.complaints(); len(c) > 0 {
+		t.Errorf("the page complained:\n%s", strings.Join(c, "\n"))
+	}
+}

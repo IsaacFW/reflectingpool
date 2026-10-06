@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -74,13 +75,13 @@ func TestLoginAndSession(t *testing.T) {
 	s, c, code := newService(t)
 	setUp(t, s, code)
 
-	if _, _, err := s.Login("10.0.0.1", "isaac", "wrong password!!"); !errors.Is(err, ErrInvalid) {
+	if _, _, err := s.Login(context.Background(), "10.0.0.1", "isaac", "wrong password!!"); !errors.Is(err, ErrInvalid) {
 		t.Errorf("wrong password: %v", err)
 	}
-	if _, _, err := s.Login("10.0.0.1", "nobody", goodPassword); !errors.Is(err, ErrInvalid) {
+	if _, _, err := s.Login(context.Background(), "10.0.0.1", "nobody", goodPassword); !errors.Is(err, ErrInvalid) {
 		t.Errorf("unknown user: %v", err)
 	}
-	token, sess, err := s.Login("10.0.0.1", "ISAAC", goodPassword) // usernames ignore case
+	token, sess, err := s.Login(context.Background(), "10.0.0.1", "ISAAC", goodPassword) // usernames ignore case
 	if err != nil || sess.User != "isaac" || sess.CSRF == "" || token == "" {
 		t.Fatalf("login: %+v, %v", sess, err)
 	}
@@ -115,13 +116,13 @@ func TestLoginAndSession(t *testing.T) {
 		t.Errorf("session outlived its maximum lifetime: %v", err)
 	}
 
-	token, _, _ = s.Login("10.0.0.1", "isaac", goodPassword)
+	token, _, _ = s.Login(context.Background(), "10.0.0.1", "isaac", goodPassword)
 	c.t = c.t.Add(idleTimeout + time.Minute)
 	if _, err := s.Authenticate(token); !errors.Is(err, ErrNoSession) {
 		t.Errorf("idle session still valid: %v", err)
 	}
 
-	token, _, _ = s.Login("10.0.0.1", "isaac", goodPassword)
+	token, _, _ = s.Login(context.Background(), "10.0.0.1", "isaac", goodPassword)
 	if err := s.Logout(token); err != nil {
 		t.Fatal(err)
 	}
@@ -135,38 +136,38 @@ func TestLockout(t *testing.T) {
 	setUp(t, s, code)
 
 	for i := range freeFailures {
-		if _, _, err := s.Login("10.0.0.7", "isaac", "wrong password!!"); !errors.Is(err, ErrInvalid) {
+		if _, _, err := s.Login(context.Background(), "10.0.0.7", "isaac", "wrong password!!"); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("attempt %d: %v", i, err)
 		}
 	}
 	var locked *LockedError
-	if _, _, err := s.Login("10.0.0.7", "isaac", goodPassword); !errors.As(err, &locked) {
+	if _, _, err := s.Login(context.Background(), "10.0.0.7", "isaac", goodPassword); !errors.As(err, &locked) {
 		t.Fatalf("correct password during lockout: %v", err)
 	}
 	if locked.RetryAfter <= 0 || locked.RetryAfter > baseLockout {
 		t.Errorf("first lockout = %s", locked.RetryAfter)
 	}
 	// Another address is unaffected.
-	if _, _, err := s.Login("10.0.0.8", "isaac", goodPassword); err != nil {
+	if _, _, err := s.Login(context.Background(), "10.0.0.8", "isaac", goodPassword); err != nil {
 		t.Errorf("other address locked out: %v", err)
 	}
 
 	// Each further failure doubles the wait.
 	c.t = c.t.Add(baseLockout + time.Second)
-	s.Login("10.0.0.7", "isaac", "wrong password!!")
-	if _, _, err := s.Login("10.0.0.7", "isaac", goodPassword); !errors.As(err, &locked) || locked.RetryAfter <= baseLockout {
+	s.Login(context.Background(), "10.0.0.7", "isaac", "wrong password!!")
+	if _, _, err := s.Login(context.Background(), "10.0.0.7", "isaac", goodPassword); !errors.As(err, &locked) || locked.RetryAfter <= baseLockout {
 		t.Errorf("second lockout: %v", err)
 	}
 
 	c.t = c.t.Add(maxLockout)
-	if _, _, err := s.Login("10.0.0.7", "isaac", goodPassword); err != nil {
+	if _, _, err := s.Login(context.Background(), "10.0.0.7", "isaac", goodPassword); err != nil {
 		t.Errorf("after the lockout expired: %v", err)
 	}
 	// A success clears the count.
 	for range freeFailures - 1 {
-		s.Login("10.0.0.7", "isaac", "wrong password!!")
+		s.Login(context.Background(), "10.0.0.7", "isaac", "wrong password!!")
 	}
-	if _, _, err := s.Login("10.0.0.7", "isaac", goodPassword); err != nil {
+	if _, _, err := s.Login(context.Background(), "10.0.0.7", "isaac", goodPassword); err != nil {
 		t.Errorf("failure count was not reset by a success: %v", err)
 	}
 }
@@ -186,7 +187,7 @@ func TestSetupCodeGuessingIsThrottled(t *testing.T) {
 func TestReset(t *testing.T) {
 	s, _, code := newService(t)
 	setUp(t, s, code)
-	token, _, _ := s.Login("10.0.0.1", "isaac", goodPassword)
+	token, _, _ := s.Login(context.Background(), "10.0.0.1", "isaac", goodPassword)
 	old := *code
 	if err := s.Reset(); err != nil {
 		t.Fatal(err)
@@ -202,7 +203,7 @@ func TestReset(t *testing.T) {
 func TestVerifyRejectsMalformedHashes(t *testing.T) {
 	s, _, _ := newService(t)
 	for _, h := range []string{"", "plain", "$argon2id$v=19$m=1024,t=1,p=1$$", "$argon2i$v=19$m=1024,t=1,p=1$c2FsdA$aGFzaA", "$argon2id$v=19$m=99999999,t=1,p=1$c2FsdA$aGFzaA"} {
-		if s.verify(h, "x") {
+		if ok, err := s.verify(context.Background(), nil, h, "x"); ok || err != nil {
 			t.Errorf("verify accepted %q", h)
 		}
 	}

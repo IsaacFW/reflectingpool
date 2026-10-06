@@ -96,7 +96,7 @@ func (e *env) note(path string) string {
 
 func (e *env) stored(share string) map[string]meta.Annotation {
 	e.t.Helper()
-	all, err := meta.Open(filepath.Join(e.root, share)).All()
+	all, err := meta.Open(e.root, share).All()
 	if err != nil {
 		e.t.Fatal(err)
 	}

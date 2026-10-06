@@ -253,15 +253,34 @@ func (a *App) adoptLatest() {
 	}
 }
 
+// store returns the metadata store of the share at sharePath. The store
+// reaches the share from its scan root without following links, so the root
+// has to be told apart: it is the one path the owner mapped and trusts.
 func (a *App) store(sharePath string) *meta.Store {
 	a.storesMu.Lock()
 	defer a.storesMu.Unlock()
 	s := a.stores[sharePath]
 	if s == nil {
-		s = meta.Open(sharePath)
+		root, rel := a.rootOf(sharePath)
+		s = meta.Open(root, rel)
 		a.stores[sharePath] = s
 	}
 	return s
+}
+
+// rootOf splits a path from the index into the scan root it lies under and
+// the rest. A path under no root, which the index does not produce, is
+// treated as a root of its own.
+func (a *App) rootOf(path string) (root, rel string) {
+	for _, r := range a.cfg.Roots {
+		if path == r {
+			return r, ""
+		}
+		if rest, ok := strings.CutPrefix(path, strings.TrimSuffix(r, "/")+"/"); ok {
+			return r, rest
+		}
+	}
+	return path, ""
 }
 
 // ScanStatus describes the running scan, if any, and the index in use.

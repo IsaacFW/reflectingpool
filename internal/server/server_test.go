@@ -20,6 +20,7 @@ import (
 	"github.com/IsaacFW/reflectingpool/internal/appdb"
 	"github.com/IsaacFW/reflectingpool/internal/auth"
 	"github.com/IsaacFW/reflectingpool/internal/core"
+	"github.com/IsaacFW/reflectingpool/internal/meta"
 )
 
 const password = "correct horse battery"
@@ -734,5 +735,37 @@ func TestSelfSignedCert(t *testing.T) {
 	}
 	if _, renewed, err := SelfSignedCert(dir, now.Add(certLifetime-24*time.Hour)); err != nil || renewed == fp {
 		t.Errorf("certificate not renewed near expiry: %v", err)
+	}
+}
+
+// A share whose .reflection has been replaced by a link is refused through
+// the API too, with a code the interface can show, and the share listing says
+// what is wrong.
+func TestAShareWithALinkInPlaceOfItsMetadataIsRefused(t *testing.T) {
+	h := newHarness(t, Options{}, false)
+	h.signIn()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(h.root, "media", meta.Dir)); err != nil {
+		t.Fatal(err)
+	}
+	big := h.id("big.mkv")
+	for _, body := range []map[string]any{{"note": "Wedding video"}, {"note": ""}} { // a note, then a skip
+		r := h.request("PUT", "/api/entries/"+big+"/annotation", body, nil)
+		if r.status != 403 || r.body["code"] != "share_unsafe" || !strings.Contains(r.body["error"].(string), "symbolic link") {
+			t.Errorf("saving %v: %d %s", body, r.status, r.raw)
+		}
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("the write landed outside the share: %v", entries)
+	}
+	r := h.expect(200, h.request("GET", "/api/shares", nil, nil))
+	var media map[string]any
+	for _, sh := range r.body["shares"].([]any) {
+		if sh.(map[string]any)["name"] == "media" {
+			media = sh.(map[string]any)
+		}
+	}
+	if media == nil || media["writable"] != false || !strings.Contains(media["problem"].(string), meta.Dir) {
+		t.Errorf("the share listing: %v", media)
 	}
 }

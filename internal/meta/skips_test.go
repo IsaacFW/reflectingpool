@@ -16,7 +16,7 @@ func TestSkips(t *testing.T) {
 	if err := os.Chmod(share, 0o775); err != nil { // Mkdir is subject to the umask
 		t.Fatal(err)
 	}
-	s := Open(share)
+	s := open(share)
 	if got, err := s.Skips(); err != nil || len(got) != 0 {
 		t.Fatalf("no list yet: %v, %v", got, err)
 	}
@@ -35,7 +35,7 @@ func TestSkips(t *testing.T) {
 	if err := s.AddSkips(odd[2:]); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := Open(share).Skips(); err != nil || !slices.Equal(got, odd) {
+	if got, err := open(share).Skips(); err != nil || !slices.Equal(got, odd) {
 		t.Fatalf("round trip: %q, %v", got, err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(share, Dir, skipName))
@@ -84,7 +84,7 @@ func TestSkipsSurviveDamage(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(share, Dir, skipName), []byte(damaged), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	s := Open(share)
+	s := open(share)
 	if err := s.AddSkips([]string{"c.txt"}); err != nil {
 		t.Fatal(err)
 	}
