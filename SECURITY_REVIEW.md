@@ -9,6 +9,8 @@
 **Method:** source review, existing tests, race detector, Go static analysis,
 dependency vulnerability scanning, and targeted local vulnerability reproductions.
 
+**Status (2026-10-06):** all five findings are fixed, in the pull request "Security: fix the five findings of the review". The reproductions in `audit_security_test.go` became `attack_test.go` in each package and now assert refusal; `scripts/security_http_probe.py` was replaced by `TestAttackRequestBodyThatNeverArrives`. RP-01 and RP-04 use `internal/safefs`, which opens every folder below a scan root relative to the one above it, refusing links; RP-02 counts a login attempt on arrival and again when it reaches a hashing slot; RP-03 sets a per-request body deadline; RP-05 drops the authority flag and replaces an old authority certificate on start.
+
 ## Executive summary
 
 Found **one high-severity and four medium-severity issues**. The most important

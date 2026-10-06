@@ -142,9 +142,14 @@ Always skipped: `.zfs` snapshot directories, `<root>/system/docker` (Docker's im
 
 ## Security
 
+An outside security review on 2026-10-05 (`SECURITY_REVIEW.md`) found one high and four medium issues. All five are fixed, and the attacks it described are tried by tests on every build.
+
 - **Keep "Privileged" off.** The program needs to read every file, so it runs as root inside the container, and the pool is mapped read-write for annotations. With privileges, the same process could also destroy datasets and snapshots. Without them, your snapshots stay out of its reach.
-- **Login.** One admin account. Passwords are hashed with Argon2id; sessions use an HttpOnly, SameSite=Strict cookie plus a CSRF token on every change. Repeated failures from one address are locked out for 30 seconds, doubling up to 15 minutes.
+- **Login.** One admin account. Passwords are hashed with Argon2id; sessions use an HttpOnly, SameSite=Strict cookie plus a CSRF token on every change. Repeated failures from one address are locked out for 30 seconds, doubling up to 15 minutes. An attempt counts when it arrives, so a burst of guesses sent at once gets no more tries than slow guessing would, and at most 16 sign-ins wait to be checked at any time.
+- **Requests.** Headers must arrive within 10 seconds and a request body within 10 more, so a client cannot hold connections open by sending slowly.
+- **Certificate.** The self-signed certificate vouches for this server only: it is not an authority and cannot sign certificates for other sites. Versions before 2026-10-06 made it an authority so that it could be imported into a trust store. On upgrade such a certificate is replaced, the browser warns once more, and the old one should be removed from any trust store it was added to.
 - **Forgotten password.** `docker exec reflectingpool reflectingpool reset-admin` deletes the account; a new setup code then appears in the log.
+- **Notes stay inside their share.** Whoever can write to a share could put a link where `.reflection/` or one of its files should be, hoping the program would follow it and write elsewhere on the pool with its own access. It does not: everything in `.reflection/` is opened without following links, and anything there the program did not make (a link, a pipe, a file with more than one name) stops notes and skips for that share until it is removed. The interface says what was found. The scanner likewise checks that every folder it opens is the one it listed.
 - **Previews.** Files on a share are untrusted. HTML, XML and scripts are served as plain text and SVG is sandboxed, so a file cannot run as a page of this site.
 - **Generated previews.** Films and HEIC photos are decoded by ffmpeg, which runs as `nobody`, not root. It is handed the one file as an open descriptor and allowed no other input, so a crafted file cannot make it read anything else; it has a time and a memory limit. RAW photos are not decoded: the JPEG the camera embedded is copied out. A bug in a decoder could still run code inside the container as `nobody`.
 

@@ -92,6 +92,11 @@ Agreed scope as of 2026-10-04. A change to this document is a change to scope.
 - HTTPS by default, with a self-signed certificate generated on first run or a supplied one. Plain HTTP only by explicit setting, for use behind a reverse proxy.
 - The container runs unprivileged: "Privileged" off, no added capabilities.
 - A read-only mode that disables every action that changes files.
+- What the program promises, and what every security finding is held to:
+  1. Whoever can write to a share cannot make the program read or write outside that share.
+  2. Whoever can reach the port without the password gets nothing and cannot tie up the server.
+  3. A hostile file cannot do more than fail to preview.
+  4. Not covered: someone who has the admin password, or root on the server.
 
 ### 9. Review workflow
 
@@ -170,6 +175,6 @@ For the reference deployment, to be confirmed by benchmark:
 
 - Step 3: every screen of the first release is built (Overview, Space with its map, Find, Review, Annotations, Storage, Settings). Generated previews are in: stills for films, pictures for RAW and HEIC photos.
 - The screens fall back where the index does not yet hold what the design asks for: folders are coloured by type but not by age, search does not look inside notes, saved views and the last review are kept in the browser, there is no queue over skipped items, and a prefix cannot be renamed.
-- An outside security review on 2026-10-05 found one high and four medium issues (`SECURITY_REVIEW.md`). None is fixed yet; the tests it added pass while the issues are present.
+- An outside security review on 2026-10-05 found one high and four medium issues (`SECURITY_REVIEW.md`). All five are fixed; its reproductions became attack tests that assert refusal and run on every build. Promise 3 above is weaker on Unraid than the ffmpeg fence suggests, since share files there are normally writable by everyone: Landlock for the preview tools is the next step.
 - The interface has been run in headless Chromium only. Firefox and Safari, and PDF and video previews as a person sees them, are unchecked.
 - Still to be checked on the reference server: datasets nested inside a share, snapshot accounting with real snapshots, saving annotations, and the review timings that `bench` now reports.
