@@ -88,7 +88,7 @@ func TestAttackCertificateCannotVouchForOtherSites(t *testing.T) {
 
 // A certificate made by an earlier version, marked as an authority, is
 // replaced the next time the program starts.
-func TestAnOldAuthorityCertificateIsReplaced(t *testing.T) {
+func TestAttackCertificateFromBeforeIsReplaced(t *testing.T) {
 	dir := t.TempDir()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {

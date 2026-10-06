@@ -741,7 +741,7 @@ func TestSelfSignedCert(t *testing.T) {
 // A share whose .reflection has been replaced by a link is refused through
 // the API too, with a code the interface can show, and the share listing says
 // what is wrong.
-func TestAShareWithALinkInPlaceOfItsMetadataIsRefused(t *testing.T) {
+func TestAttackShareLinkThroughTheAPI(t *testing.T) {
 	h := newHarness(t, Options{}, false)
 	h.signIn()
 	outside := t.TempDir()

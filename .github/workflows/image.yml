@@ -61,3 +61,16 @@ jobs:
             docker push "$image:latest"
           fi
           echo "Published $image:$branch and $image:$version" >> "$GITHUB_STEP_SUMMARY"
+
+  # The attacks the security review described, as a check of their own, so
+  # that a failure says what it is. They run inside the Test step above as
+  # well; here they also run under the race detector, and each is listed.
+  attacks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Attack tests
+        run: |
+          docker run --rm -v "$PWD":/src -w /src -e GOFLAGS=-buildvcs=false \
+            golang:1.27 go test -race -count=1 -v -run 'TestAttack' ./...

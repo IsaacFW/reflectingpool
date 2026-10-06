@@ -1046,7 +1046,7 @@ func TestPreviews(t *testing.T) {
 // A share whose .reflection has been replaced by a link is shown as such,
 // and nothing can be recorded in it. The share listing finds the problem when
 // the page loads; no scan is needed.
-func TestAShareWithALinkInPlaceOfItsNotes(t *testing.T) {
+func TestAttackShareLinkInTheBrowser(t *testing.T) {
 	meta := filepath.Join(root, "inbox", ".reflection")
 	kept := false
 	if _, err := os.Lstat(meta); err == nil {

@@ -10,7 +10,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestLinksAreRefusedAtEveryStep(t *testing.T) {
+func TestAttackLinksAtEveryStep(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	os.MkdirAll(filepath.Join(root, "share/.reflection"), 0o755)
 	os.WriteFile(filepath.Join(root, "share/.reflection/notes"), []byte("ours"), 0o644)
