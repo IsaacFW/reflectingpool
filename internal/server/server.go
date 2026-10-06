@@ -12,12 +12,15 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/IsaacFW/reflectingpool/internal/auth"
 	"github.com/IsaacFW/reflectingpool/internal/core"
 	"github.com/IsaacFW/reflectingpool/internal/index"
+	"github.com/IsaacFW/reflectingpool/internal/meta"
 	"github.com/IsaacFW/reflectingpool/internal/preview"
 	"github.com/IsaacFW/reflectingpool/web"
 )
@@ -250,6 +253,11 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	case errors.As(err, &locked):
 		w.Header().Set("Retry-After", strconv.Itoa(int(locked.RetryAfter.Seconds())+1))
 		status, code = http.StatusTooManyRequests, "locked"
+	case errors.Is(err, auth.ErrBusy):
+		w.Header().Set("Retry-After", "2")
+		status, code = http.StatusTooManyRequests, "busy"
+	case errors.Is(err, errBodyTimeout):
+		status, code = http.StatusRequestTimeout, "timeout"
 	case errors.Is(err, auth.ErrNoSession):
 		status, code = http.StatusUnauthorized, "not_signed_in"
 	case errors.Is(err, auth.ErrInvalid):
@@ -264,6 +272,8 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 		status, code = http.StatusUnprocessableEntity, "preview_failed"
 	case errors.As(err, new(*core.ShareReadOnlyError)):
 		status, code = http.StatusForbidden, "share_read_only"
+	case errors.As(err, new(*core.ShareUnsafeError)), errors.As(err, new(*meta.Suspect)):
+		status, code = http.StatusForbidden, "share_unsafe"
 	case errors.Is(err, core.ErrReadOnly):
 		status, code = http.StatusForbidden, "read_only"
 	case errors.Is(err, index.ErrNotFound):
@@ -304,22 +314,6 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 type badRequest string
 
 func (e badRequest) Error() string { return string(e) }
-
-func decode(r *http.Request, v any) error {
-	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
-		return badRequest("the request body must be application/json")
-	}
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			return err
-		}
-		return badRequest("malformed JSON: " + err.Error())
-	}
-	return nil
-}
 
 func pathID(r *http.Request) (int64, error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -379,4 +373,41 @@ func (q *query) page(defLimit, maxLimit int64) (limit, offset int) {
 
 func (q *query) sort() index.Sort {
 	return index.Sort{Key: q.v.Get("sort"), Desc: q.v.Get("desc") == "1" || (q.v.Get("sort") == "" && q.v.Get("desc") == "")}
+}
+
+// bodyTimeout is how long a request has to send its body once its headers
+// are in. The bodies here are small JSON; a client that trickles one in is
+// holding a connection and a goroutine for nothing. The header timeout is
+// set on the server; this one is set per request, so that a long answer such
+// as a film streaming out is not cut short by a limit meant for reading.
+var bodyTimeout = 10 * time.Second
+
+var errBodyTimeout = errors.New("the request body did not arrive in time")
+
+func decode(w http.ResponseWriter, r *http.Request, v any) error {
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt != "application/json" {
+		return badRequest("the request body must be application/json")
+	}
+	rc := http.NewResponseController(w)
+	rc.SetReadDeadline(time.Now().Add(bodyTimeout))
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	err := dec.Decode(v)
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		// The deadline stays. Before answering, the server tries to read
+		// the rest of the body, and that must give up at once too; the
+		// connection is then closed.
+		return errBodyTimeout
+	}
+	// Read in time: the deadline goes, so that the answer can take as long
+	// as it needs.
+	rc.SetReadDeadline(time.Time{})
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			return err
+		}
+		return badRequest("malformed JSON: " + err.Error())
+	}
+	return nil
 }

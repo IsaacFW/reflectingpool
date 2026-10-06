@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"log"
 	"math/big"
 	"net"
 	"os"
@@ -29,8 +30,17 @@ const (
 func SelfSignedCert(dir string, now time.Time) (tls.Certificate, string, error) {
 	certPath, keyPath := filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
 	if cert, err := tls.LoadX509KeyPair(certPath, keyPath); err == nil {
-		if leaf, err := x509.ParseCertificate(cert.Certificate[0]); err == nil && now.Before(leaf.NotAfter.Add(-renewBefore)) {
-			return cert, fingerprint(cert.Certificate[0]), nil
+		if leaf, err := x509.ParseCertificate(cert.Certificate[0]); err == nil {
+			switch {
+			case leaf.IsCA:
+				// Made by an earlier version, which marked the certificate as
+				// an authority so that it could be imported into a trust
+				// store. Such a key could sign certificates for any site, so
+				// the certificate is replaced.
+				log.Printf("replacing the TLS certificate: the old one was marked as a certificate authority. Accept the new one once in your browser, and remove the old one from any trust store it was added to.")
+			case now.Before(leaf.NotAfter.Add(-renewBefore)):
+				return cert, fingerprint(cert.Certificate[0]), nil
+			}
 		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -49,13 +59,14 @@ func SelfSignedCert(dir string, now time.Time) (tls.Certificate, string, error) 
 		Subject:      pkix.Name{CommonName: "Reflecting Pool"},
 		NotBefore:    now.Add(-time.Hour),
 		NotAfter:     now.Add(certLifetime),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		// Marked as an authority so it can be imported into a browser's or
-		// device's trust store to silence the warning.
-		IsCA: true, BasicConstraintsValid: true,
-		DNSNames:    []string{"localhost"},
-		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+		// Not an authority: the key can vouch for this server and nothing
+		// else, so a copy of it cannot be used to impersonate other sites to
+		// a device that trusts this certificate.
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"localhost"},
+		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
 	}
 	if host, err := os.Hostname(); err == nil && host != "" {
 		tmpl.DNSNames = append(tmpl.DNSNames, host)

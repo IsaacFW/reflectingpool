@@ -1,7 +1,7 @@
 // The right-hand column: whatever item is selected, with its facts, a
 // preview and the form that records what it is for. Review uses the same
 // preview and form.
-import { api, contentURL, FLAG, indexId, lockedShares, previewURL, session, STATE, superseded } from './api.js';
+import { api, contentURL, FLAG, indexId, lockedShares, previewURL, session, shareProblems, STATE, superseded } from './api.js';
 import { ago, bytes, count, date, duration, plural } from './format.js';
 import { html, useEffect, useRef, useState } from './lib.js';
 import { prefs, say } from './state.js';
@@ -312,7 +312,7 @@ export function AnnotationForm({ entry, annotation, onSaved }) {
   return html`
     <form class="stack" onSubmit=${save}
       onKeyDown=${(/** @type {KeyboardEvent} */ e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save(e); }}>
-      ${readOnly && html`<p class="hint">${shareLocked ? "This share is mapped into the container read-only, so nothing can be recorded here." : "Read-only mode: nothing can be recorded."}</p>`}
+      ${readOnly && html`<p class="hint">${shareProblems.value.get(entry.share) || (shareLocked ? "This share is mapped into the container read-only, so nothing can be recorded here." : "Read-only mode: nothing can be recorded.")}</p>`}
       ${annotation && annotation.skipped && html`<p class="hint">This item was skipped in a review.</p>`}
       <${Fields} form=${form} onChange=${setForm} disabled=${off} folder=${entry.kind === "dir"} />
       ${error && html`<p class="err" role="alert">${error}</p>`}

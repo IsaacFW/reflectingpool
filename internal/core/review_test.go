@@ -36,7 +36,7 @@ func (e *env) unreview(path string) {
 
 func (e *env) skips(share string) []string {
 	e.t.Helper()
-	list, err := meta.Open(filepath.Join(e.root, share)).Skips()
+	list, err := meta.Open(e.root, share).Skips()
 	if err != nil {
 		e.t.Fatal(err)
 	}

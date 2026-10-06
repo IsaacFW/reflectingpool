@@ -426,6 +426,17 @@ func (w *walker) readDir(it work) {
 	}
 	f := os.NewFile(uintptr(fd), it.path)
 	defer f.Close()
+	// The folder was queued by path, and a folder above it may since have
+	// been swapped for a link to somewhere else; the open follows links in
+	// every component but the last. So the open folder is checked against the
+	// one that was listed: a different device or inode is not it, and is left
+	// out rather than read.
+	var self unix.Statx_t
+	if err := statx(fd, "", unix.AT_EMPTY_PATH, &self); err != nil || devOf(&self) != n.dev || self.Ino != n.ino {
+		n.flags |= FlagError
+		w.prog.Errors.Add(1)
+		return
+	}
 
 	var batch []Entry
 	var bytes int64

@@ -94,10 +94,15 @@ export function superseded(/** @type {unknown} */ e) {
 /** The shares nothing can be recorded in, by entry ID, with their names. A pool mapped read-only puts every share here. */
 export const lockedShares = signal(/** @type {Map<number, string>} */ (new Map()));
 
+/** Shares with something in their .reflection folder that this program did not make, by entry ID, with what was found. Nothing is recorded in them. */
+export const shareProblems = signal(/** @type {Map<number, string>} */ (new Map()));
+
 /** Asks which shares can be written to. Called when the index changes, since share IDs change with it. */
 export function loadShareAccess() {
   return api('GET', '/api/shares').then((r) => {
-    lockedShares.value = new Map(r.shares.filter((/** @type {{writable: boolean}} */ s) => !s.writable).map((/** @type {{id: number, name: string}} */ s) => [s.id, s.name]));
+    const shares = /** @type {{id: number, name: string, writable: boolean, problem?: string}[]} */ (r.shares);
+    lockedShares.value = new Map(shares.filter((s) => !s.writable).map((s) => [s.id, s.name]));
+    shareProblems.value = new Map(shares.filter((s) => s.problem).map((s) => [s.id, /** @type {string} */ (s.problem)]));
   }).catch(() => {});
 }
 

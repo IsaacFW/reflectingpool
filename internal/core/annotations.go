@@ -153,6 +153,11 @@ func (a *App) Annotation(ctx context.Context, id int64) (an meta.Annotation, fou
 			return err
 		}
 		an, found, err = a.store(t.sharePath).Get(t.rel)
+		if isSuspect(err) {
+			// Browsing goes on when a share's notes cannot be read; the share
+			// listing and the scan warnings say what is wrong with them.
+			an, found, err = meta.Annotation{}, false, nil
+		}
 		if err == nil && !found && t.row.State&index.StateSkipped != 0 {
 			an, found = meta.Annotation{Path: t.rel, Kind: t.row.Kind, Skipped: true}, true
 		}
@@ -378,8 +383,12 @@ type ShareInfo struct {
 	CoveredBytes int64 `json:"covered_bytes"`
 	// Writable is false when nothing can be recorded in the share: the
 	// program is in read-only mode, or the share is mapped read-only.
-	Writable bool   `json:"writable"`
-	Error    string `json:"error,omitempty"`
+	Writable bool `json:"writable"`
+	// Problem says why nothing can be recorded when the cause is something
+	// in the share's .reflection folder that this program did not make: a
+	// link, a pipe, a file of someone else's.
+	Problem string `json:"problem,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
@@ -402,6 +411,9 @@ func (a *App) Shares(ctx context.Context) ([]ShareInfo, error) {
 		for _, sh := range shares {
 			info := ShareInfo{Row: sh, Skipped: int(skipped[sh.ID])}
 			info.Writable = !a.cfg.ReadOnly && unix.Access(sh.Path, unix.W_OK) == nil
+			if err := a.store(sh.Path).Check(); isSuspect(err) {
+				info.Problem, info.Writable = unsafe(sh.Path, err).Error(), false
+			}
 			all, err := a.store(sh.Path).All()
 			if err != nil {
 				info.Error = err.Error()
@@ -868,6 +880,12 @@ func (e *ShareReadOnlyError) Error() string {
 // person can act on. Without it, a pool mapped read-only shows as an internal
 // error whose cause is only in the log.
 func writeFailure(err error) error {
+	if isSuspect(err) {
+		var sus *meta.Suspect
+		errors.As(err, &sus)
+		share, _, _ := strings.Cut(sus.Path, "/"+meta.Dir)
+		return unsafe(share, err)
+	}
 	var pe *fs.PathError
 	if err == nil || !errors.As(err, &pe) {
 		return err
@@ -923,4 +941,29 @@ func (a *App) Preview(ctx context.Context, id int64) (string, preview.Info, erro
 		return err
 	})
 	return path, info, err
+}
+
+// ShareUnsafeError reports that something in a share's metadata folder is not
+// what the program made, so nothing is recorded there until it is removed. A
+// share writer who could make the program follow a link out of the share
+// would borrow its access to the whole pool; refusing is the fence.
+type ShareUnsafeError struct {
+	Share   string // the share's path
+	Problem string // what was found, with its path
+}
+
+func (e *ShareUnsafeError) Error() string {
+	return e.Problem + ". Nothing is recorded in " + e.Share + " until that is removed."
+}
+
+func isSuspect(err error) bool {
+	var sus *meta.Suspect
+	return errors.As(err, &sus)
+}
+
+// unsafe wraps a Suspect from a share's store with the share it concerns.
+func unsafe(share string, err error) *ShareUnsafeError {
+	var sus *meta.Suspect
+	errors.As(err, &sus)
+	return &ShareUnsafeError{Share: share, Problem: sus.Error()}
 }

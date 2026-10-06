@@ -29,7 +29,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -45,11 +45,11 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}
-	token, sess, err := s.auth.Login(s.clientAddr(r), req.Username, req.Password)
+	token, sess, err := s.auth.Login(r.Context(), s.clientAddr(r), req.Username, req.Password)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -94,7 +94,7 @@ func (s *Server) scanStart(w http.ResponseWriter, r *http.Request, _ auth.Sessio
 		var req struct {
 			Intensity string `json:"intensity"`
 		}
-		if err := decode(r, &req); err != nil {
+		if err := decode(w, r, &req); err != nil {
 			s.fail(w, err)
 			return
 		}
@@ -278,7 +278,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request, _ auth.Sess
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request, sess auth.Session) {
 	var settings core.Settings
-	if err := decode(r, &settings); err != nil {
+	if err := decode(w, r, &settings); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -342,7 +342,7 @@ func (s *Server) putAnnotation(w http.ResponseWriter, r *http.Request, _ auth.Se
 		return
 	}
 	var in core.AnnotationInput
-	if err := decode(r, &in); err != nil {
+	if err := decode(w, r, &in); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -409,7 +409,7 @@ func (s *Server) putPrefixes(w http.ResponseWriter, r *http.Request, _ auth.Sess
 	var req struct {
 		Prefixes []core.Prefix `json:"prefixes"`
 	}
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -450,7 +450,7 @@ func (d queueDef) spec() index.QueueSpec {
 // after each item it annotates or skips; finished items drop out on their own.
 func (s *Server) queue(w http.ResponseWriter, r *http.Request, _ auth.Session) {
 	var req queueDef
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}
@@ -478,7 +478,7 @@ func (s *Server) queueSkip(w http.ResponseWriter, r *http.Request, _ auth.Sessio
 		queueDef
 		Group []any `json:"group"`
 	}
-	if err := decode(r, &req); err != nil {
+	if err := decode(w, r, &req); err != nil {
 		s.fail(w, err)
 		return
 	}

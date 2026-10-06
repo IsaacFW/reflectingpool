@@ -17,7 +17,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	if err := os.Chmod(share, 0o775); err != nil { // Mkdir is subject to the umask
 		t.Fatal(err)
 	}
-	s := Open(share)
+	s := open(share)
 
 	if all, err := s.All(); err != nil || len(all) != 0 {
 		t.Fatalf("empty store: %v, %v", all, err)
@@ -40,7 +40,7 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 
 	// A second store on the same share reads what the first wrote.
-	got, ok, err := Open(share).Get("movies/home")
+	got, ok, err := open(share).Get("movies/home")
 	if err != nil || !ok || got.Note != a.Note || got.Identity != a.Identity || !got.Updated.Equal(a.Updated) {
 		t.Fatalf("round trip: %+v, %v, %v", got, ok, err)
 	}
@@ -89,7 +89,7 @@ func TestStoreRoundTrip(t *testing.T) {
 
 func TestStoreSeesOutsideEdits(t *testing.T) {
 	share := t.TempDir()
-	s := Open(share)
+	s := open(share)
 	if err := s.Put(Annotation{Path: "a", Kind: "file", Note: "one"}); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestStoreRefusesToOverwriteDamagedFile(t *testing.T) {
 	if err := os.WriteFile(file, []byte(damaged), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	s := Open(share)
+	s := open(share)
 	if err := s.Put(Annotation{Path: "c", Kind: "file"}); err == nil {
 		t.Fatal("wrote over a file it could not fully read")
 	}
@@ -153,3 +153,6 @@ func TestFingerprint(t *testing.T) {
 		}
 	}
 }
+
+// open is the store of a share that is a folder of its own under some root.
+func open(share string) *Store { return Open(filepath.Dir(share), filepath.Base(share)) }

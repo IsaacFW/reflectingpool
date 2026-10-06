@@ -70,9 +70,11 @@ type Session struct {
 }
 
 type attempt struct {
-	fails int
-	until time.Time
-	last  time.Time
+	fails    int
+	inflight int // attempts that have arrived and are not yet decided
+	checking int // of those, the ones that hold a hashing slot
+	until    time.Time
+	last     time.Time
 }
 
 type Service struct {
@@ -85,6 +87,7 @@ type Service struct {
 	mu        sync.Mutex
 	setupCode string
 	attempts  map[string]*attempt
+	waiting   int // sign-ins waiting for a hashing slot
 	dummy     string
 
 	// Hashing is memory-hard; without a cap a burst of logins could exhaust
@@ -187,46 +190,6 @@ func validate(username, password string) error {
 	return nil
 }
 
-// Login checks a password and starts a session. The returned token is the
-// session cookie's value; only its hash is stored.
-func (s *Service) Login(addr, username, password string) (token string, sess Session, err error) {
-	if err := s.locked(addr); err != nil {
-		return "", Session{}, err
-	}
-	if len(password) > maxPassword {
-		s.fail(addr)
-		return "", Session{}, ErrInvalid
-	}
-	var name, stored string
-	err = s.db.QueryRow(`SELECT name, pwhash FROM users WHERE name = ?`, strings.TrimSpace(username)).Scan(&name, &stored)
-	if errors.Is(err, sql.ErrNoRows) {
-		// Do the same work as for a real user so timing does not reveal
-		// which usernames exist.
-		s.verify(s.dummyHash(), password)
-		s.fail(addr)
-		return "", Session{}, ErrInvalid
-	}
-	if err != nil {
-		return "", Session{}, err
-	}
-	if !s.verify(stored, password) {
-		s.fail(addr)
-		return "", Session{}, ErrInvalid
-	}
-	s.mu.Lock()
-	delete(s.attempts, addr)
-	s.mu.Unlock()
-
-	token, csrf := randomToken(), randomToken()
-	now := s.now()
-	s.db.Exec(`DELETE FROM sessions WHERE created < ? OR seen < ?`, now.Add(-maxLifetime).Unix(), now.Add(-idleTimeout).Unix())
-	if _, err := s.db.Exec(`INSERT INTO sessions(token, user, csrf, created, seen) VALUES(?,?,?,?,?)`,
-		tokenHash(token), name, csrf, now.Unix(), now.Unix()); err != nil {
-		return "", Session{}, err
-	}
-	return token, Session{User: name, CSRF: csrf, Created: now}, nil
-}
-
 // Authenticate returns the session for a cookie value.
 func (s *Service) Authenticate(token string) (Session, error) {
 	if token == "" {
@@ -281,35 +244,6 @@ func (s *Service) locked(addr string) error {
 	return nil
 }
 
-// fail records a failed attempt. The first few are free; after that each one
-// doubles the lockout, up to a cap.
-func (s *Service) fail(addr string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := s.now()
-	if len(s.attempts) > 4096 {
-		for k, a := range s.attempts {
-			if now.Sub(a.last) > forgetAfter {
-				delete(s.attempts, k)
-			}
-		}
-	}
-	a := s.attempts[addr]
-	if a == nil || now.Sub(a.last) > forgetAfter {
-		a = &attempt{}
-		s.attempts[addr] = a
-	}
-	a.fails++
-	a.last = now
-	if over := a.fails - freeFailures; over >= 0 {
-		lock := maxLockout
-		if over < 10 {
-			lock = min(baseLockout<<over, maxLockout)
-		}
-		a.until = now.Add(lock)
-	}
-}
-
 func (s *Service) dummyHash() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -332,32 +266,6 @@ func (s *Service) hashLocked(password string) string {
 	key := argon2.IDKey([]byte(password), salt, p.Time, p.MemoryKiB, p.Threads, 32)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s", argon2.Version, p.MemoryKiB, p.Time, p.Threads,
 		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
-}
-
-// verify checks a password against a stored hash, using the cost settings
-// recorded in the hash rather than the current defaults.
-func (s *Service) verify(encoded, password string) bool {
-	parts := strings.Split(encoded, "$")
-	if len(parts) != 6 || parts[1] != "argon2id" {
-		return false
-	}
-	var version int
-	var p Params
-	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil || version != argon2.Version {
-		return false
-	}
-	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &p.MemoryKiB, &p.Time, &p.Threads); err != nil {
-		return false
-	}
-	salt, err1 := base64.RawStdEncoding.DecodeString(parts[4])
-	want, err2 := base64.RawStdEncoding.DecodeString(parts[5])
-	if err1 != nil || err2 != nil || len(want) == 0 || p.Time == 0 || p.Threads == 0 || p.MemoryKiB > 1024*1024 {
-		return false
-	}
-	s.hashing <- struct{}{}
-	defer func() { <-s.hashing }()
-	got := argon2.IDKey([]byte(password), salt, p.Time, p.MemoryKiB, p.Threads, uint32(len(want)))
-	return subtle.ConstantTimeCompare(got, want) == 1
 }
 
 func randomToken() string {
